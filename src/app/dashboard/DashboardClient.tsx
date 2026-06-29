@@ -115,15 +115,22 @@ export default function DashboardClient({
             }}
             className="bns-page"
         >
+            <style>{`
+                @media (max-width: 768px) {
+                    .dash-header-row { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
+                    .dash-stat-grid { grid-template-columns: 1fr 1fr !important; gap: 12px !important; }
+                    .dash-chart-wrap { height: 180px !important; }
+                    .dash-table-scroll { overflow-x: auto !important; }
+                }
+            `}</style>
             {/* Header */}
             <motion.div
                 initial={{ opacity: 0, y: -12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 style={{ marginBottom: 40 }}
-                className="bns-header"
             >
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
+                <div className="dash-header-row" style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
                     <h1 style={{ fontSize: '1.6rem', fontWeight: 700, color: '#0a0a0a', margin: 0 }}>
                         {businessName ? `${businessName}` : 'Dashboard'}
                     </h1>
@@ -136,6 +143,7 @@ export default function DashboardClient({
                             border: '1px solid #f0d4c8',
                             padding: '2px 10px',
                             borderRadius: 20,
+                            whiteSpace: 'nowrap',
                         }}
                     >
                         {accountLabel}
@@ -146,15 +154,15 @@ export default function DashboardClient({
                 </p>
             </motion.div>
 
-            {/* Stat cards: 2x2 grid on desktop, 1col on mobile */}
+            {/* Stat cards: 2x2 grid on desktop, 2col on mobile */}
             <div
+                className="dash-stat-grid"
                 style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
                     gap: 20,
                     marginBottom: 40,
                 }}
-                className="bns-stat-grid"
             >
                 {statList.map((stat, i) => {
                     const Icon = stat.icon;
@@ -227,7 +235,7 @@ export default function DashboardClient({
                         Visualizing financial performance trends
                     </p>
                 </div>
-                <div style={{ width: '100%', height: 220 }}>
+                <div className="dash-chart-wrap" style={{ width: '100%', height: 220 }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={graphData} margin={{ left: -10, right: 10, top: 5, bottom: 5 }}>
                             <XAxis
@@ -303,8 +311,8 @@ export default function DashboardClient({
                             to process shipments.
                         </div>
                     ) : (
-                        <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+                        <div className="dash-table-scroll" style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
                                 <thead>
                                     <tr
                                         style={{
