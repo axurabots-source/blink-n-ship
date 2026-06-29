@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// ─── Animated Canvas Background ───────────────────────────────────────────────
 function AnimatedBG() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -57,14 +58,12 @@ function AnimatedBG() {
             };
         };
 
-        // Pre-fill
         for (let i = 0; i < 12; i++) {
             const l = spawnLine();
             l.life = Math.random() * l.maxLife;
             lines.push(l);
         }
 
-        // Occasional bright streak
         type Streak = {
             x: number; y: number;
             vx: number; vy: number;
@@ -90,13 +89,9 @@ function AnimatedBG() {
             ctx.fillStyle = 'rgba(10,10,10,0.45)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Spawn lines
             if (lines.length < 35 && Math.random() < 0.55) lines.push(spawnLine());
-
-            // Spawn streak occasionally
             if (frame % 38 === 0) streaks.push(spawnStreak());
 
-            // Draw lines
             for (let i = lines.length - 1; i >= 0; i--) {
                 const l = lines[i];
                 l.life++;
@@ -124,7 +119,6 @@ function AnimatedBG() {
                 ctx.lineCap = 'round';
                 ctx.stroke();
 
-                // Bright tip glow
                 const tipGrad = ctx.createRadialGradient(l.x, l.y, 0, l.x, l.y, 6);
                 tipGrad.addColorStop(0, `rgba(255,210,180,${l.opacity * 0.9})`);
                 tipGrad.addColorStop(1, `rgba(204,120,92,0)`);
@@ -134,7 +128,6 @@ function AnimatedBG() {
                 ctx.fill();
             }
 
-            // Draw bright streaks
             for (let i = streaks.length - 1; i >= 0; i--) {
                 const s = streaks[i];
                 s.life++;
@@ -162,7 +155,6 @@ function AnimatedBG() {
                 ctx.lineCap = 'round';
                 ctx.stroke();
 
-                // Wide glow around streak
                 const sg2 = ctx.createLinearGradient(tx, ty, s.x, s.y);
                 sg2.addColorStop(0, `rgba(204,120,92,0)`);
                 sg2.addColorStop(1, `rgba(204,120,92,${op * 0.15})`);
@@ -174,12 +166,9 @@ function AnimatedBG() {
                 ctx.stroke();
             }
 
-            // Ambient glow center-bottom
             const ag = ctx.createRadialGradient(
-                canvas.width * 0.5, canvas.height,
-                0,
-                canvas.width * 0.5, canvas.height,
-                canvas.width * 0.4
+                canvas.width * 0.5, canvas.height, 0,
+                canvas.width * 0.5, canvas.height, canvas.width * 0.4
             );
             ag.addColorStop(0, 'rgba(204,120,92,0.06)');
             ag.addColorStop(1, 'rgba(0,0,0,0)');
@@ -206,24 +195,13 @@ function AnimatedBG() {
     );
 }
 
-// ─── Left Panel ───────────────────────────────────────────────────────────────
+// ─── Left Panel ────────────────────────────────────────────────────────────────
 function LeftPanel({ isSignup }: { isSignup: boolean }) {
     return (
-        <div
-            className="hidden lg:flex"
-            style={{
-                width: '50%',
-                background: '#0a0a0a',
-                position: 'relative',
-                overflow: 'hidden',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                padding: '3rem',
-            }}
-        >
+        <div className="login-left-panel">
             <AnimatedBG />
 
-            {/* Vignette overlay */}
+            {/* Vignette */}
             <div style={{
                 position: 'absolute', inset: 0, pointerEvents: 'none',
                 background: 'radial-gradient(ellipse at 50% 100%, transparent 30%, rgba(10,10,10,0.6) 100%)',
@@ -231,14 +209,14 @@ function LeftPanel({ isSignup }: { isSignup: boolean }) {
 
             {/* Brand */}
             <div style={{ position: 'relative', zIndex: 10 }}>
-                <span style={{ color: '#ffffff', fontWeight: 600, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>
+                <span style={{ color: '#ffffff', fontWeight: 700, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>
                     Blink N Ship
                 </span>
             </div>
 
             <div />
 
-            {/* Bottom text */}
+            {/* Bottom tagline */}
             <div style={{ position: 'relative', zIndex: 10 }}>
                 <AnimatePresence mode="wait">
                     <motion.div
@@ -271,6 +249,49 @@ function LeftPanel({ isSignup }: { isSignup: boolean }) {
             <p style={{ color: '#dbcdcdff', fontSize: '0.72rem', position: 'relative', zIndex: 10 }}>
                 © 2026 Blink N Ship
             </p>
+        </div>
+    );
+}
+
+// ─── Mobile Top Banner ─────────────────────────────────────────────────────────
+function MobileBanner({ isSignup }: { isSignup: boolean }) {
+    return (
+        <div className="login-mobile-banner">
+            <AnimatedBG />
+            <div style={{
+                position: 'absolute', inset: 0, pointerEvents: 'none',
+                background: 'radial-gradient(ellipse at 50% 120%, transparent 30%, rgba(10,10,10,0.7) 100%)',
+            }} />
+            <div style={{ position: 'relative', zIndex: 10, padding: '28px 28px 24px' }}>
+                <span style={{ color: '#ffffff', fontWeight: 700, fontSize: '1.05rem', letterSpacing: '-0.02em', display: 'block', marginBottom: 10 }}>
+                    Blink N Ship
+                </span>
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={isSignup ? 'su-m' : 'li-m'}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                        <h2 style={{
+                            color: '#ffffff',
+                            fontSize: '1.25rem',
+                            fontWeight: 600,
+                            letterSpacing: '-0.025em',
+                            lineHeight: 1.3,
+                            margin: '0 0 6px',
+                        }}>
+                            {isSignup ? 'Paste. Process. Profit.' : 'Orders in. Parcels out.'}
+                        </h2>
+                        <p style={{ color: '#CC785C', fontSize: '0.8rem', margin: 0, lineHeight: 1.6 }}>
+                            {isSignup
+                                ? 'AI reads messages & books shipments instantly.'
+                                : 'Pick up right where you left off.'}
+                        </p>
+                    </motion.div>
+                </AnimatePresence>
+            </div>
         </div>
     );
 }
@@ -313,12 +334,13 @@ function InputField({ type, placeholder, value, onChange, required, minLength }:
                 outline: 'none',
                 transition: 'border-color 0.2s, background 0.2s, box-shadow 0.2s',
                 boxShadow: focused ? '0 0 0 3px rgba(204,120,92,0.12)' : 'none',
+                boxSizing: 'border-box',
             }}
         />
     );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function LoginPage() {
     const [isSignup, setIsSignup] = useState(false);
     const [email, setEmail] = useState('');
@@ -348,114 +370,169 @@ export default function LoginPage() {
     }
 
     return (
-        <div style={{ minHeight: '100vh', display: 'flex', background: '#ffffff' }}>
+        <>
+            <style>{`
+                .login-wrapper {
+                    min-height: 100vh;
+                    display: flex;
+                    background: #ffffff;
+                    font-family: var(--font-geist-sans), sans-serif;
+                }
 
-            <LeftPanel isSignup={isSignup} />
+                /* Desktop: left panel visible, mobile banner hidden */
+                .login-left-panel {
+                    width: 50%;
+                    background: #0a0a0a;
+                    position: relative;
+                    overflow: hidden;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    padding: 3rem;
+                }
+                .login-mobile-banner {
+                    display: none;
+                }
+                .login-right-panel {
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 2rem 1.5rem;
+                    overflow: hidden;
+                }
 
-            {/* Right Panel */}
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1.5rem', overflow: 'hidden' }}>
-                <AnimatePresence mode="wait">
-                    <motion.div
-                        key={isSignup ? 'signup' : 'login'}
-                        initial={{ opacity: 0, x: isSignup ? 60 : -60 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: isSignup ? -60 : 60 }}
-                        transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
-                        style={{ width: '100%', maxWidth: 380 }}
-                    >
-                        <p className="lg:hidden" style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0a0a0a', marginBottom: 40 }}>
-                            Blink N Ship
-                        </p>
+                @media (max-width: 768px) {
+                    .login-wrapper {
+                        flex-direction: column;
+                    }
+                    .login-left-panel {
+                        display: none;
+                    }
+                    .login-mobile-banner {
+                        display: block;
+                        position: relative;
+                        overflow: hidden;
+                        background: #0a0a0a;
+                        min-height: 180px;
+                        flex-shrink: 0;
+                    }
+                    .login-right-panel {
+                        flex: 1;
+                        align-items: flex-start;
+                        padding: 28px 24px 40px;
+                    }
+                }
+            `}</style>
 
-                        <h1 style={{ fontSize: '1.75rem', fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.03em', marginBottom: 8 }}>
-                            {isSignup ? 'Create account' : 'Welcome back'}
-                        </h1>
-                        <p style={{ fontSize: '0.875rem', color: '#737373', marginBottom: 36 }}>
-                            {isSignup ? 'Start processing orders today' : 'Sign in to your account'}
-                        </p>
+            <div className="login-wrapper">
+                {/* Desktop left panel */}
+                <LeftPanel isSignup={isSignup} />
 
-                        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                            <InputField type="email" placeholder="Email address" value={email} onChange={setEmail} required />
-                            <InputField
-                                type="password"
-                                placeholder={isSignup ? 'Password (min. 6 characters)' : 'Password'}
-                                value={password} onChange={setPassword} required minLength={6}
-                            />
+                {/* Mobile top banner */}
+                <MobileBanner isSignup={isSignup} />
 
-                            <AnimatePresence>
-                                {error && (
-                                    <motion.div
-                                        initial={{ opacity: 0, height: 0 }}
-                                        animate={{ opacity: 1, height: 'auto' }}
-                                        exit={{ opacity: 0, height: 0 }}
-                                        transition={{ duration: 0.22 }}
-                                        style={{ overflow: 'hidden' }}
-                                    >
-                                        <div style={{ padding: '0.75rem', background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '0.75rem' }}>
-                                            <span style={{ fontSize: '0.8rem', color: '#e05252' }}>⚠ {error}</span>
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
+                {/* Right / Bottom panel — form */}
+                <div className="login-right-panel">
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={isSignup ? 'signup' : 'login'}
+                            initial={{ opacity: 0, x: isSignup ? 60 : -60 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: isSignup ? -60 : 60 }}
+                            transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                            style={{ width: '100%', maxWidth: 380 }}
+                        >
+                            <h1 style={{ fontSize: '1.75rem', fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.03em', marginBottom: 8 }}>
+                                {isSignup ? 'Create account' : 'Welcome back'}
+                            </h1>
+                            <p style={{ fontSize: '0.875rem', color: '#737373', marginBottom: 36 }}>
+                                {isSignup ? 'Start processing orders today' : 'Sign in to your account'}
+                            </p>
+
+                            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                <InputField type="email" placeholder="Email address" value={email} onChange={setEmail} required />
+                                <InputField
+                                    type="password"
+                                    placeholder={isSignup ? 'Password (min. 6 characters)' : 'Password'}
+                                    value={password} onChange={setPassword} required minLength={6}
+                                />
+
+                                <AnimatePresence>
+                                    {error && (
+                                        <motion.div
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: 'auto' }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            transition={{ duration: 0.22 }}
+                                            style={{ overflow: 'hidden' }}
+                                        >
+                                            <div style={{ padding: '0.75rem', background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '0.75rem' }}>
+                                                <span style={{ fontSize: '0.8rem', color: '#e05252' }}>⚠ {error}</span>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+
+                                <motion.button
+                                    type="submit"
+                                    disabled={loading}
+                                    whileHover={!loading ? { scale: 1.015, filter: 'brightness(1.08)' } : {}}
+                                    whileTap={!loading ? { scale: 0.975 } : {}}
+                                    style={{
+                                        marginTop: 6,
+                                        width: '100%',
+                                        padding: '0.9rem',
+                                        borderRadius: '0.75rem',
+                                        background: '#CC785C',
+                                        color: '#ffffff',
+                                        fontSize: '0.875rem',
+                                        fontWeight: 600,
+                                        border: 'none',
+                                        cursor: loading ? 'not-allowed' : 'pointer',
+                                        opacity: loading ? 0.8 : 1,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: 8,
+                                        letterSpacing: '-0.01em',
+                                    }}
+                                >
+                                    {loading && <Spinner />}
+                                    {loading ? 'Please wait…' : isSignup ? 'Create Account' : 'Sign In'}
+                                </motion.button>
+                            </form>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '1.75rem 0' }}>
+                                <div style={{ flex: 1, height: 1, background: '#e5e5e5' }} />
+                                <span style={{ fontSize: '0.75rem', color: '#a3a3a3' }}>or</span>
+                                <div style={{ flex: 1, height: 1, background: '#e5e5e5' }} />
+                            </div>
 
                             <motion.button
-                                type="submit"
-                                disabled={loading}
-                                whileHover={!loading ? { scale: 1.015, filter: 'brightness(1.08)' } : {}}
-                                whileTap={!loading ? { scale: 0.975 } : {}}
+                                onClick={() => setIsSignup(!isSignup)}
+                                whileHover={{ borderColor: '#CC785C', color: '#CC785C' }}
                                 style={{
-                                    marginTop: 6,
                                     width: '100%',
-                                    padding: '0.9rem',
+                                    padding: '0.75rem',
                                     borderRadius: '0.75rem',
-                                    background: '#CC785C',
-                                    color: '#ffffff',
+                                    border: '1.5px solid #e5e5e5',
+                                    background: 'transparent',
                                     fontSize: '0.875rem',
-                                    fontWeight: 600,
-                                    border: 'none',
-                                    cursor: loading ? 'not-allowed' : 'pointer',
-                                    opacity: loading ? 0.8 : 1,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: 8,
-                                    letterSpacing: '-0.01em',
+                                    color: '#737373',
+                                    cursor: 'pointer',
+                                    transition: 'border-color 0.2s, color 0.2s',
                                 }}
                             >
-                                {loading && <Spinner />}
-                                {loading ? 'Please wait…' : isSignup ? 'Create Account' : 'Sign In'}
+                                {isSignup ? 'Already have an account? ' : "Don't have an account? "}
+                                <span style={{ color: '#CC785C', fontWeight: 600 }}>
+                                    {isSignup ? 'Sign in' : 'Sign up'}
+                                </span>
                             </motion.button>
-                        </form>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '1.75rem 0' }}>
-                            <div style={{ flex: 1, height: 1, background: '#e5e5e5' }} />
-                            <span style={{ fontSize: '0.75rem', color: '#a3a3a3' }}>or</span>
-                            <div style={{ flex: 1, height: 1, background: '#e5e5e5' }} />
-                        </div>
-
-                        <motion.button
-                            onClick={() => setIsSignup(!isSignup)}
-                            whileHover={{ borderColor: '#CC785C', color: '#CC785C' }}
-                            style={{
-                                width: '100%',
-                                padding: '0.75rem',
-                                borderRadius: '0.75rem',
-                                border: '1.5px solid #e5e5e5',
-                                background: 'transparent',
-                                fontSize: '0.875rem',
-                                color: '#737373',
-                                cursor: 'pointer',
-                                transition: 'border-color 0.2s, color 0.2s',
-                            }}
-                        >
-                            {isSignup ? 'Already have an account? ' : "Don't have an account? "}
-                            <span style={{ color: '#CC785C', fontWeight: 600 }}>
-                                {isSignup ? 'Sign in' : 'Sign up'}
-                            </span>
-                        </motion.button>
-                    </motion.div>
-                </AnimatePresence>
+                        </motion.div>
+                    </AnimatePresence>
+                </div>
             </div>
-        </div>
+        </>
     );
 }
