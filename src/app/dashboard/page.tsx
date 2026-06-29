@@ -14,6 +14,9 @@ export default async function DashboardPage() {
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
     const [
         totalOrders,
         bookedToday,
@@ -21,6 +24,7 @@ export default async function DashboardPage() {
         revenueAgg,
         profitAgg,
         todayBookedOrders,
+        graphOrders,
     ] = await Promise.all([
         prisma.order.count({ where: { userId: user.id } }),
         prisma.order.count({
@@ -50,27 +54,22 @@ export default async function DashboardPage() {
             },
             orderBy: { bookedAt: 'desc' },
         }),
+        prisma.order.findMany({
+            where: {
+                userId: user.id,
+                status: 'booked',
+                bookedAt: { gte: fourteenDaysAgo },
+            },
+            select: {
+                bookedAt: true,
+                sellingPrice: true,
+                profit: true,
+            },
+        }),
     ]);
 
     const totalRevenue = Number(revenueAgg._sum.sellingPrice ?? 0);
     const totalProfit = Number(profitAgg._sum.profit ?? 0);
-
-    // Calculate last 14 days profit & revenue
-    const fourteenDaysAgo = new Date();
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-
-    const graphOrders = await prisma.order.findMany({
-        where: {
-            userId: user.id,
-            status: 'booked',
-            bookedAt: { gte: fourteenDaysAgo },
-        },
-        select: {
-            bookedAt: true,
-            sellingPrice: true,
-            profit: true,
-        },
-    });
 
     const dailyMap = new Map<string, { dateStr: string; profit: number; revenue: number }>();
     for (let i = 13; i >= 0; i--) {

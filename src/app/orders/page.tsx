@@ -89,10 +89,7 @@ export default function OrdersPage() {
     const [editingBookedId, setEditingBookedId] = useState<string | null>(null);
     const [editBookedForm, setEditBookedForm] = useState<Partial<Order>>({});
     
-    // Bulk edit booked popover state
-    const [bulkEditOpen, setBulkEditOpen] = useState(false);
-    const [bulkEditField, setBulkEditField] = useState<'city' | 'shippingType' | 'weight' | 'sellingPrice'>('shippingType');
-    const [bulkEditValue, setBulkEditValue] = useState('');
+    const [savingEdit, setSavingEdit] = useState(false);
 
     const [extracting, setExtracting] = useState(false);
     const [booking, setBooking] = useState(false);
@@ -162,18 +159,17 @@ export default function OrdersPage() {
         setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, [field]: value } : o));
     }
 
-    async function saveField(orderId: string, field: string, value: any) {
+    async function saveFieldsBatch(orderId: string, updatesObj: Record<string, any>) {
         try {
             const res = await fetch(`/api/orders/${orderId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [field]: value }),
+                body: JSON.stringify(updatesObj),
             });
             if (!res.ok) {
-                throw new Error('Failed to update field');
+                throw new Error('Failed to update order');
             }
-            // Auto update validation error status on save
-            if (field === 'productId' && value) {
+            if ('productId' in updatesObj && updatesObj.productId) {
                 setValidationErrors((prev) => {
                     const next = new Set(prev);
                     next.delete(orderId);
@@ -186,27 +182,30 @@ export default function OrdersPage() {
         }
     }
 
+    async function saveField(orderId: string, field: string, value: any) {
+        saveFieldsBatch(orderId, { [field]: value });
+    }
+
     function handleProductSelect(orderId: string, productId: string) {
         const product = products.find((p) => p.id === productId);
-        editLocal(orderId, 'productId', productId);
-        saveField(orderId, 'productId', productId);
-
         if (product) {
             const costPriceVal = parseFloat(product.costPrice) || 0;
             const weightVal = parseFloat(product.weight) || 0;
             const shippingVal = getShippingTypeFromWeight(weightVal);
 
-            editLocal(orderId, 'costPrice', product.costPrice);
-            saveField(orderId, 'costPrice', costPriceVal);
+            const updates = {
+                productId,
+                costPrice: costPriceVal,
+                weight: weightVal,
+                shippingType: shippingVal,
+            };
 
-            editLocal(orderId, 'weight', product.weight);
-            saveField(orderId, 'weight', weightVal);
-
-            editLocal(orderId, 'shippingType', shippingVal);
-            saveField(orderId, 'shippingType', shippingVal);
+            setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, ...updates, costPrice: product.costPrice, weight: product.weight } : o));
+            saveFieldsBatch(orderId, updates);
         } else {
-            editLocal(orderId, 'productId', null);
-            saveField(orderId, 'productId', null);
+            const updates = { productId: null };
+            setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, productId: null } : o));
+            saveFieldsBatch(orderId, updates);
         }
     }
 
@@ -214,11 +213,9 @@ export default function OrdersPage() {
         const w = parseFloat(weightStr) || 0;
         const suggestedShipping = getShippingTypeFromWeight(w);
 
-        editLocal(orderId, 'weight', weightStr);
-        saveField(orderId, 'weight', w);
-
-        editLocal(orderId, 'shippingType', suggestedShipping);
-        saveField(orderId, 'shippingType', suggestedShipping);
+        const updates = { weight: w, shippingType: suggestedShipping };
+        setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, weight: weightStr, shippingType: suggestedShipping } : o));
+        saveFieldsBatch(orderId, updates);
     }
 
     // Toggle expands
@@ -434,6 +431,7 @@ export default function OrdersPage() {
 
     async function saveInlineEditBooked() {
         if (!editingBookedId) return;
+        setSavingEdit(true);
         try {
             const res = await fetch(`/api/orders/${editingBookedId}`, {
                 method: 'PATCH',
@@ -451,36 +449,12 @@ export default function OrdersPage() {
             await refresh();
         } catch (err: any) {
             setError(err.message);
+        } finally {
+            setSavingEdit(false);
         }
     }
 
-    // Bulk edit selected booked handler
-    async function handleBulkEditBooked() {
-        if (selectedBooked.size === 0 || !bulkEditValue) return;
-        setError('');
-        setBooking(true);
-        try {
-            for (const id of selectedBooked) {
-                let parsedVal: any = bulkEditValue;
-                if (bulkEditField === 'weight' || bulkEditField === 'sellingPrice') {
-                    parsedVal = parseFloat(bulkEditValue) || 0;
-                }
-                await fetch(`/api/orders/${id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ [bulkEditField]: parsedVal }),
-                });
-            }
-            setSelectedBooked(new Set());
-            setBulkEditOpen(false);
-            setBulkEditValue('');
-            await refresh();
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setBooking(false);
-        }
-    }
+
 
     return (
         <motion.div
@@ -616,57 +590,11 @@ export default function OrdersPage() {
                 )}
             </AnimatePresence>
             {/* Header */}
-            <div style={{ marginBottom: 36, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                    <h1 style={{ fontSize: '1.6rem', fontWeight: 700, color: T.fg, margin: 0 }}>Order Booking</h1>
-                    <p style={{ color: T.muted, fontSize: '0.875rem', margin: '4px 0 0' }}>
-                        Process raw messages, fill delivery details, and generate courier labels instantly.
-                    </p>
-                </div>
-
-                {/* Tabs switcher */}
-                <div style={{
-                    display: 'flex',
-                    background: T.card,
-                    border: `1px solid ${T.border}`,
-                    borderRadius: '8px',
-                    padding: '3px',
-                }}>
-                    <button
-                        onClick={() => setActiveTab('drafts')}
-                        style={{
-                            border: 'none',
-                            padding: '6px 16px',
-                            borderRadius: '6px',
-                            fontSize: '0.82rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            background: activeTab === 'drafts' ? T.bg : 'transparent',
-                            color: activeTab === 'drafts' ? T.fg : T.muted,
-                            boxShadow: activeTab === 'drafts' ? '0 2px 6px rgba(0,0,0,0.04)' : 'none',
-                            transition: 'all 0.15s ease',
-                        }}
-                    >
-                        Drafts ({draftOrders.length})
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('booked')}
-                        style={{
-                            border: 'none',
-                            padding: '6px 16px',
-                            borderRadius: '6px',
-                            fontSize: '0.82rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            background: activeTab === 'booked' ? T.bg : 'transparent',
-                            color: activeTab === 'booked' ? T.fg : T.muted,
-                            boxShadow: activeTab === 'booked' ? '0 2px 6px rgba(0,0,0,0.04)' : 'none',
-                            transition: 'all 0.15s ease',
-                        }}
-                    >
-                        Booked ({bookedOrders.length})
-                    </button>
-                </div>
+            <div style={{ marginBottom: 24 }}>
+                <h1 style={{ fontSize: '1.6rem', fontWeight: 700, color: T.fg, margin: 0 }}>Order Booking</h1>
+                <p style={{ color: T.muted, fontSize: '0.875rem', margin: '4px 0 0' }}>
+                    Process raw messages, fill delivery details, and generate courier labels instantly.
+                </p>
             </div>
 
             {/* Error Banner */}
@@ -688,81 +616,172 @@ export default function OrdersPage() {
                 </div>
             )}
 
+            {/* Extract section — Always visible at top */}
+            <div style={{
+                background: T.card,
+                border: `1px solid ${T.border}`,
+                borderRadius: 12,
+                padding: 24,
+                marginBottom: 24,
+            }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: T.fg, display: 'block', marginBottom: 10 }}>
+                    Paste customer orders / messages
+                </label>
+                <textarea
+                    value={rawText}
+                    onChange={(e) => setRawText(e.target.value)}
+                    placeholder="Paste message from customer here. E.g. Name: Aisha Khan, Cell: 03215556789, Address: House 23, Block C, Gulshan, Karachi. Item: 2 lawn suits"
+                    rows={4}
+                    style={{
+                        width: '100%',
+                        border: `1px solid ${T.border}`,
+                        borderRadius: 8,
+                        padding: '10px 14px',
+                        fontSize: '0.875rem',
+                        color: T.fg,
+                        background: T.bg,
+                        resize: 'vertical',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        fontFamily: 'inherit',
+                        lineHeight: 1.6,
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = T.accent}
+                    onBlur={(e) => e.target.style.borderColor = T.border}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 14 }}>
+                    <AnimatePresence>
+                        {extracting && (
+                            <motion.div
+                                initial={{ x: -40, opacity: 0 }}
+                                animate={{ x: 0, opacity: 1 }}
+                                exit={{ x: 20, opacity: 0 }}
+                                style={{ display: 'flex', gap: 5, alignItems: 'center' }}
+                            >
+                                {[0, 1, 2].map((i) => (
+                                    <motion.div
+                                        key={i}
+                                        animate={{ y: [0, -5, 0] }}
+                                        transition={{ repeat: Infinity, delay: i * 0.15, duration: 0.5 }}
+                                        style={{ width: 6, height: 6, borderRadius: '50%', background: '#CC785C' }}
+                                    />
+                                ))}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                    <motion.button
+                        onClick={handleExtract}
+                        disabled={extracting || !rawText.trim()}
+                        whileHover={{ scale: extracting || !rawText.trim() ? 1 : 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            background: extracting || !rawText.trim() ? '#e5e5e5' : T.accent,
+                            color: extracting || !rawText.trim() ? T.muted : '#fff',
+                            border: 'none', borderRadius: 8, padding: '9px 20px',
+                            fontSize: '0.875rem', fontWeight: 600, cursor: extracting || !rawText.trim() ? 'not-allowed' : 'pointer',
+                        }}
+                    >
+                        {extracting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                        {extracting ? 'Extracting...' : 'Process Orders'}
+                    </motion.button>
+                </div>
+            </div>
+
+            {/* Inventory Holder Empty Inventory Warning */}
+            {profile?.accountType === 'inventory_holder' && products.length === 0 && (
+                <div style={{
+                    background: '#fffbf0',
+                    border: '1px solid #fef3c7',
+                    borderRadius: 12,
+                    padding: '16px 20px',
+                    marginBottom: 24,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 16,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ background: '#fef3c7', padding: 8, borderRadius: '50%', color: '#d97706', display: 'flex' }}>
+                            <AlertTriangle size={20} />
+                        </div>
+                        <div>
+                            <h4 style={{ margin: '0 0 2px', fontSize: '0.9rem', fontWeight: 700, color: '#92400e' }}>
+                                Inventory Required Before Booking
+                            </h4>
+                            <p style={{ margin: 0, fontSize: '0.8rem', color: '#b45309' }}>
+                                As an Inventory Holder, you must add products to your Inventory Catalog before booking shipments.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => window.location.href = '/products'}
+                        style={{
+                            background: '#d97706',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: 8,
+                            padding: '8px 16px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        Add Inventory Now →
+                    </button>
+                </div>
+            )}
+
+            {/* Tabs switcher — Positioned right below extract & warning */}
+            <div style={{
+                display: 'inline-flex',
+                background: T.card,
+                border: `1px solid ${T.border}`,
+                borderRadius: '8px',
+                padding: '3px',
+                marginBottom: 24,
+            }}>
+                <button
+                    onClick={() => setActiveTab('drafts')}
+                    style={{
+                        border: 'none',
+                        padding: '7px 20px',
+                        borderRadius: '6px',
+                        fontSize: '0.84rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        background: activeTab === 'drafts' ? T.bg : 'transparent',
+                        color: activeTab === 'drafts' ? T.fg : T.muted,
+                        boxShadow: activeTab === 'drafts' ? '0 2px 6px rgba(0,0,0,0.04)' : 'none',
+                        transition: 'all 0.15s ease',
+                    }}
+                >
+                    Drafts ({draftOrders.length})
+                </button>
+                <button
+                    onClick={() => setActiveTab('booked')}
+                    style={{
+                        border: 'none',
+                        padding: '7px 20px',
+                        borderRadius: '6px',
+                        fontSize: '0.84rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        background: activeTab === 'booked' ? T.bg : 'transparent',
+                        color: activeTab === 'booked' ? T.fg : T.muted,
+                        boxShadow: activeTab === 'booked' ? '0 2px 6px rgba(0,0,0,0.04)' : 'none',
+                        transition: 'all 0.15s ease',
+                    }}
+                >
+                    Booked ({bookedOrders.length})
+                </button>
+            </div>
+
             {/* Render Drafts Tab */}
             {activeTab === 'drafts' && (
                 <div>
-                    {/* Extract section */}
-                    <div style={{
-                        background: T.card,
-                        border: `1px solid ${T.border}`,
-                        borderRadius: 12,
-                        padding: 24,
-                        marginBottom: 36,
-                    }}>
-                        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: T.fg, display: 'block', marginBottom: 10 }}>
-                            Paste customer orders / messages
-                        </label>
-                        <textarea
-                            value={rawText}
-                            onChange={(e) => setRawText(e.target.value)}
-                            placeholder="Paste message from customer here. E.g. Name: Aisha Khan, Cell: 03215556789, Address: House 23, Block C, Gulshan, Karachi. Item: 2 lawn suits"
-                            rows={5}
-                            style={{
-                                width: '100%',
-                                border: `1px solid ${T.border}`,
-                                borderRadius: 8,
-                                padding: '10px 14px',
-                                fontSize: '0.875rem',
-                                color: T.fg,
-                                background: T.bg,
-                                resize: 'vertical',
-                                outline: 'none',
-                                boxSizing: 'border-box',
-                                fontFamily: 'inherit',
-                                lineHeight: 1.6,
-                            }}
-                            onFocus={(e) => e.target.style.borderColor = T.accent}
-                            onBlur={(e) => e.target.style.borderColor = T.border}
-                        />
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 14 }}>
-                            {/* Animated dots moving left-to-button while extracting */}
-                            <AnimatePresence>
-                                {extracting && (
-                                    <motion.div
-                                        initial={{ x: -40, opacity: 0 }}
-                                        animate={{ x: 0, opacity: 1 }}
-                                        exit={{ x: 20, opacity: 0 }}
-                                        style={{ display: 'flex', gap: 5, alignItems: 'center' }}
-                                    >
-                                        {[0, 1, 2].map((i) => (
-                                            <motion.div
-                                                key={i}
-                                                animate={{ y: [0, -5, 0] }}
-                                                transition={{ repeat: Infinity, delay: i * 0.15, duration: 0.5 }}
-                                                style={{ width: 6, height: 6, borderRadius: '50%', background: '#CC785C' }}
-                                            />
-                                        ))}
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                            <motion.button
-                                onClick={handleExtract}
-                                disabled={extracting || !rawText.trim()}
-                                whileHover={{ scale: extracting || !rawText.trim() ? 1 : 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: 8,
-                                    background: extracting || !rawText.trim() ? '#e5e5e5' : T.accent,
-                                    color: extracting || !rawText.trim() ? T.muted : '#fff',
-                                    border: 'none', borderRadius: 8, padding: '9px 20px',
-                                    fontSize: '0.875rem', fontWeight: 600, cursor: extracting || !rawText.trim() ? 'not-allowed' : 'pointer',
-                                }}
-                            >
-                                {extracting ? <Loader2 size={14} /> : <Sparkles size={14} />}
-                                {extracting ? 'Extracting...' : 'Process Orders'}
-                            </motion.button>
-                        </div>
-                    </div>
 
                     {/* Draft section header with bulk actions */}
                     {draftOrders.length > 0 && (
@@ -1137,6 +1156,7 @@ export default function OrdersPage() {
                                             <>
                                                 <button
                                                     onClick={saveInlineEditBooked}
+                                                    disabled={savingEdit}
                                                     style={{
                                                         background: '#16a34a',
                                                         color: '#fff',
@@ -1145,16 +1165,18 @@ export default function OrdersPage() {
                                                         padding: '6px 14px',
                                                         fontSize: '0.8rem',
                                                         fontWeight: 600,
-                                                        cursor: 'pointer',
+                                                        cursor: savingEdit ? 'not-allowed' : 'pointer',
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: 4,
+                                                        gap: 6,
                                                     }}
                                                 >
-                                                    <Check size={12} /> Save Edit
+                                                    {savingEdit ? <Loader2 size={13} className="animate-spin" /> : <Check size={12} />}
+                                                    {savingEdit ? 'Saving...' : 'Save Edit'}
                                                 </button>
                                                 <button
                                                     onClick={() => setEditingBookedId(null)}
+                                                    disabled={savingEdit}
                                                     style={{
                                                         border: `1px solid ${T.border}`,
                                                         background: T.bg,
@@ -1163,7 +1185,7 @@ export default function OrdersPage() {
                                                         padding: '6px 14px',
                                                         fontSize: '0.8rem',
                                                         fontWeight: 600,
-                                                        cursor: 'pointer',
+                                                        cursor: savingEdit ? 'not-allowed' : 'pointer',
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         gap: 4,
@@ -1200,23 +1222,6 @@ export default function OrdersPage() {
                                                 )}
 
                                                 <button
-                                                    onClick={() => setBulkEditOpen(!bulkEditOpen)}
-                                                    style={{
-                                                        border: `1px solid ${T.border}`,
-                                                        background: T.bg,
-                                                        borderRadius: '6px',
-                                                        padding: '4px 10px',
-                                                        fontSize: '0.8rem',
-                                                        cursor: 'pointer',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: 4,
-                                                    }}
-                                                >
-                                                    <Edit2 size={12} /> Bulk Edit
-                                                </button>
-                                                
-                                                <button
                                                     onClick={handleUnbookSelected}
                                                     disabled={unbooking}
                                                     style={{
@@ -1232,7 +1237,7 @@ export default function OrdersPage() {
                                                         gap: 4,
                                                     }}
                                                 >
-                                                    <Undo size={12} /> Unbook Selected
+                                                    {unbooking ? <Loader2 size={12} className="animate-spin" /> : <Undo size={12} />} Unbook Selected
                                                 </button>
                                             </>
                                         )}
@@ -1241,83 +1246,6 @@ export default function OrdersPage() {
                             </div>
                         </div>
                     )}
-
-                    {/* Bulk Edit form panel */}
-                    <AnimatePresence>
-                        {bulkEditOpen && selectedBooked.size > 0 && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                style={{
-                                    background: T.card,
-                                    border: `1px solid ${T.border}`,
-                                    borderRadius: '8px',
-                                    padding: '16px 20px',
-                                    marginBottom: 16,
-                                    overflow: 'hidden',
-                                }}
-                            >
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end' }}>
-                                    <div>
-                                        <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Select Field</span>
-                                        <select
-                                            value={bulkEditField}
-                                            onChange={(e) => {
-                                                setBulkEditField(e.target.value as any);
-                                                setBulkEditValue('');
-                                            }}
-                                            style={{ border: `1px solid ${T.border}`, borderRadius: '6px', padding: '6px 10px', fontSize: '0.8rem', background: T.bg, outline: 'none' }}
-                                        >
-                                            <option value="shippingType">Shipping Type</option>
-                                            <option value="city">City</option>
-                                            <option value="weight">Weight (kg)</option>
-                                            <option value="sellingPrice">Selling Price (Rs)</option>
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>New Value</span>
-                                        {bulkEditField === 'shippingType' ? (
-                                            <select
-                                                value={bulkEditValue}
-                                                onChange={(e) => setBulkEditValue(e.target.value)}
-                                                style={{ border: `1px solid ${T.border}`, borderRadius: '6px', padding: '6px 10px', fontSize: '0.8rem', background: T.bg, outline: 'none' }}
-                                            >
-                                                <option value="">— Select type —</option>
-                                                <option value="Overnight">Overnight</option>
-                                                <option value="Detain">Detain</option>
-                                                <option value="Overland">Overland</option>
-                                            </select>
-                                        ) : (
-                                            <input
-                                                type={bulkEditField === 'weight' || bulkEditField === 'sellingPrice' ? 'number' : 'text'}
-                                                value={bulkEditValue}
-                                                onChange={(e) => setBulkEditValue(e.target.value)}
-                                                placeholder="Enter value"
-                                                style={{ border: `1px solid ${T.border}`, borderRadius: '6px', padding: '6px 10px', fontSize: '0.8rem', background: T.bg, outline: 'none' }}
-                                            />
-                                        )}
-                                    </div>
-
-                                    <div style={{ display: 'flex', gap: 6 }}>
-                                        <button
-                                            onClick={handleBulkEditBooked}
-                                            style={{ border: 'none', background: T.accent, color: '#fff', padding: '7px 14px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
-                                        >
-                                            Apply
-                                        </button>
-                                        <button
-                                            onClick={() => setBulkEditOpen(false)}
-                                            style={{ border: `1px solid ${T.border}`, background: T.bg, color: T.muted, padding: '7px 14px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
 
                     {/* Booked orders table */}
                     <div style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 12, overflow: 'hidden' }}>

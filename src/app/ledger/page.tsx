@@ -63,15 +63,10 @@ export default function LedgerPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        refresh();
-        loadProducts();
+        Promise.all([refresh(), loadProducts()]);
 
-        // Refetch on window focus
         window.addEventListener('focus', refresh);
-        
-        // Polling every 30s
         const interval = setInterval(refresh, 30000);
-
         return () => {
             window.removeEventListener('focus', refresh);
             clearInterval(interval);
@@ -159,8 +154,19 @@ export default function LedgerPage() {
 
     if (loading) {
         return (
-            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.muted }}>
-                Loading Ledger...
+            <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: T.bg, gap: 16 }}>
+                <motion.div
+                    animate={{ rotate: 360, scale: [1, 1.1, 1] }}
+                    transition={{ repeat: Infinity, duration: 1.2, ease: 'easeInOut' }}
+                    style={{
+                        width: 44, height: 44, borderRadius: '50%',
+                        border: `3px solid ${T.accentLight}`, borderTopColor: T.accent,
+                        boxShadow: '0 0 16px rgba(204,120,92,0.2)',
+                    }}
+                />
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: T.fg, letterSpacing: '0.02em' }}>
+                    Loading Ledger & Accounts...
+                </span>
             </div>
         );
     }

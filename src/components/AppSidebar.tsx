@@ -34,9 +34,18 @@ export default function AppSidebar() {
     const [accountType, setAccountType] = useState<string | null>(null);
 
     useEffect(() => {
-        fetch('/api/orders').then(r => r.json()).then(b => {
-            if (b.profile?.accountType) setAccountType(b.profile.accountType);
-        }).catch(() => {});
+        const cached = localStorage.getItem('bns_account_type');
+        if (cached) setAccountType(cached);
+
+        fetch('/api/profile')
+            .then(r => r.json())
+            .then(b => {
+                if (b.profile?.accountType) {
+                    setAccountType(b.profile.accountType);
+                    localStorage.setItem('bns_account_type', b.profile.accountType);
+                }
+            })
+            .catch(() => {});
     }, []);
 
     // Path change hone par close draw model
