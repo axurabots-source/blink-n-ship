@@ -3,6 +3,22 @@ import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { encrypt } from '@/lib/crypto';
 
+export async function GET(req: NextRequest) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const profile = await prisma.profile.findUnique({
+        where: { id: user.id },
+        select: { flashipConnected: true },
+    });
+
+    return NextResponse.json({ connected: profile?.flashipConnected || false });
+}
+
 export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -11,16 +27,24 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const { email, password } = await req.json();
+    const { api_key } = await req.json();
 
-    if (!email || !password) {
+    if (!api_key) {
         return NextResponse.json(
-            { error: 'email and password are required' },
+            { error: 'api_key required' },
             { status: 400 }
         );
     }
 
-    const encryptedCredentials = encrypt(JSON.stringify({ email, password }));
+    const encryptedCredentials = encrypt(JSON.stringify({ api_key }));
+
+    // Delete any existing courier accounts for clean state (optional but safe)
+    await prisma.courierAccount.deleteMany({
+        where: {
+            userId: user.id,
+            provider: 'flaship',
+        },
+    });
 
     await prisma.courierAccount.create({
         data: {

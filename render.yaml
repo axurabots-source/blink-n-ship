@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: blink-n-ship
+    env: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm run start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CREDENTIALS_ENCRYPTION_KEY
+        sync: false
+      - key: NODE_VERSION
+        value: 20

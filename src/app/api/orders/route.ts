@@ -10,10 +10,15 @@ export async function GET() {
         return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const orders = await prisma.order.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: 'desc' },
-    });
+    const [orders, profile] = await Promise.all([
+        prisma.order.findMany({
+            where: { userId: user.id },
+            orderBy: { createdAt: 'desc' },
+        }),
+        prisma.profile.findUnique({
+            where: { id: user.id },
+        }),
+    ]);
 
-    return NextResponse.json({ orders });
+    return NextResponse.json({ orders, profile });
 }

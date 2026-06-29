@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Profile {
@@ -39,8 +40,10 @@ model Product {
   userId        String   @map("user_id") @db.Uuid
   name          String
   sku           String?
+  imageUrl      String?  @map("image_url")
   costPrice     Decimal  @default(0) @map("cost_price") @db.Decimal(12, 2)
   stockQuantity Int      @default(0) @map("stock_quantity")
+  weight        Decimal? @default(0) @db.Decimal(8, 2)
   createdAt     DateTime @default(now()) @map("created_at")
 
   profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -72,6 +75,8 @@ model Order {
   courierProvider String? @map("courier_provider")
 
   rawInput  String?   @map("raw_input")
+  weight       Decimal? @db.Decimal(8, 2)
+  shippingType String?  @map("shipping_type")
   createdAt DateTime  @default(now()) @map("created_at")
   bookedAt  DateTime? @map("booked_at")
 
