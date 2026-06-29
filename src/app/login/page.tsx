@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Truck } from 'lucide-react';
 
 // ─── Animated Canvas Background ───────────────────────────────────────────────
 function AnimatedBG() {
@@ -209,9 +210,12 @@ function LeftPanel({ isSignup }: { isSignup: boolean }) {
 
             {/* Brand */}
             <div style={{ position: 'relative', zIndex: 10 }}>
-                <span style={{ color: '#ffffff', fontWeight: 700, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>
-                    Blink N Ship
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Truck size={18} color="#CC785C" style={{ transform: 'scaleX(-1)' }} />
+                    <span style={{ color: '#ffffff', fontWeight: 700, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>
+                        Blink N Ship
+                    </span>
+                </div>
             </div>
 
             <div />
@@ -263,9 +267,12 @@ function MobileBanner({ isSignup }: { isSignup: boolean }) {
                 background: 'radial-gradient(ellipse at 50% 120%, transparent 30%, rgba(10,10,10,0.7) 100%)',
             }} />
             <div style={{ position: 'relative', zIndex: 10, padding: '28px 28px 24px' }}>
-                <span style={{ color: '#ffffff', fontWeight: 700, fontSize: '1.05rem', letterSpacing: '-0.02em', display: 'block', marginBottom: 10 }}>
-                    Blink N Ship
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <Truck size={16} color="#CC785C" style={{ transform: 'scaleX(-1)' }} />
+                    <span style={{ color: '#ffffff', fontWeight: 700, fontSize: '1.05rem', letterSpacing: '-0.02em' }}>
+                        Blink N Ship
+                    </span>
+                </div>
                 <AnimatePresence mode="wait">
                     <motion.div
                         key={isSignup ? 'su-m' : 'li-m'}
