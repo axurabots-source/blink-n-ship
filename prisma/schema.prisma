@@ -8,6 +8,10 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CORE USER / PROFILE
+// ─────────────────────────────────────────────────────────────────────────────
+
 model Profile {
   id               String   @id @db.Uuid
   businessName     String?  @map("business_name")
@@ -15,25 +19,493 @@ model Profile {
   flashipConnected Boolean  @default(false) @map("flaship_connected")
   createdAt        DateTime @default(now()) @map("created_at")
 
-  courierAccounts CourierAccount[]
-  products        Product[]
-  orders          Order[]
+  courierAccounts       CourierAccount[]
+  courierAccountMeta    CourierAccountMetadata[]
+  courierSettings       CourierSettings?
+  courierCompanies      CourierCompany[]
+  pickupLocations       PickupLocation[]
+  serviceTypes          ServiceType[]
+  operationalCities     OperationalCity[]
+  rateCards             RateCard[]
+  shipments             Shipment[]
+  loadsheets            Loadsheet[]
+  syncLogs              SyncLog[]
+  apiLogs               ApiLog[]
+  activityLogs          CourierActivityLog[]
+  products              Product[]
+  orders                Order[]
 
   @@map("profiles")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COURIER AUTHENTICATION
+// ─────────────────────────────────────────────────────────────────────────────
 
 model CourierAccount {
   id                   String   @id @default(uuid()) @db.Uuid
   userId               String   @map("user_id") @db.Uuid
   provider             String   @default("flaship")
+  authMethod           String   @default("api_key") @map("auth_method") // api_key | otp (future)
   encryptedCredentials String   @map("encrypted_credentials")
   isActive             Boolean  @default(true) @map("is_active")
+  connectedAt          DateTime @default(now()) @map("connected_at")
+  lastVerifiedAt       DateTime? @map("last_verified_at")
   createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at")
 
   profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([userId, provider, isActive])
   @@map("courier_accounts")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COURIER ACCOUNT METADATA (fetched from provider)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CourierAccountMetadata {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  provider      String   @default("flaship")
+  accountName   String?  @map("account_name")
+  accountId     String?  @map("account_id")
+  email         String?
+  phone         String?
+  balance       Decimal? @db.Decimal(12, 2)
+  currency      String?  @default("PKR")
+  rawMetadata   Json?    @map("raw_metadata")
+  fetchedAt     DateTime @default(now()) @map("fetched_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, provider])
+  @@map("courier_account_metadata")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COURIER SETTINGS (per user)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CourierSettings {
+  id                    String   @id @default(uuid()) @db.Uuid
+  userId                String   @unique @map("user_id") @db.Uuid
+  defaultProvider       String   @default("flaship") @map("default_provider")
+  defaultCompanyId      String?  @map("default_company_id") @db.Uuid
+  defaultPickupId       String?  @map("default_pickup_id") @db.Uuid
+  defaultServiceType    String?  @map("default_service_type")
+  autoSyncEnabled       Boolean  @default(false) @map("auto_sync_enabled")
+  autoSyncIntervalMins  Int      @default(30) @map("auto_sync_interval_mins")
+  bookingRetryCount     Int      @default(3) @map("booking_retry_count")
+  timeoutSeconds        Int      @default(30) @map("timeout_seconds")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("courier_settings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COURIER COMPANIES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CourierCompany {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  provider      String   @default("flaship")
+  externalId    String?  @map("external_id")
+  name          String
+  code          String?
+  logoUrl       String?  @map("logo_url")
+  isActive      Boolean  @default(true) @map("is_active")
+  isDefault     Boolean  @default(false) @map("is_default")
+  rawData       Json?    @map("raw_data")
+  syncedAt      DateTime @default(now()) @map("synced_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  profile      Profile       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceTypes ServiceType[]
+  shipments    Shipment[]
+
+  @@index([userId])
+  @@index([userId, provider])
+  @@map("courier_companies")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVICE TYPES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ServiceType {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  companyId     String?  @map("company_id") @db.Uuid
+  provider      String   @default("flaship")
+  externalId    String?  @map("external_id")
+  name          String
+  code          String?
+  description   String?
+  isActive      Boolean  @default(true) @map("is_active")
+  rawData       Json?    @map("raw_data")
+  syncedAt      DateTime @default(now()) @map("synced_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  profile Profile         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company CourierCompany? @relation(fields: [companyId], references: [id])
+
+  @@index([userId])
+  @@index([userId, provider])
+  @@map("service_types")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PICKUP LOCATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PickupLocation {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  provider      String   @default("flaship")
+  externalId    String?  @map("external_id")
+  name          String
+  contactPerson String?  @map("contact_person")
+  phone         String?
+  address       String?
+  city          String?
+  area          String?
+  isDefault     Boolean  @default(false) @map("is_default")
+  isActive      Boolean  @default(true) @map("is_active")
+  rawData       Json?    @map("raw_data")
+  syncedAt      DateTime @default(now()) @map("synced_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  profile   Profile    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shipments Shipment[]
+
+  @@index([userId])
+  @@index([userId, provider])
+  @@map("pickup_locations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OPERATIONAL CITIES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model OperationalCity {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  provider      String   @default("flaship")
+  externalId    String?  @map("external_id")
+  name          String
+  code          String?
+  zone          String?
+  isActive      Boolean  @default(true) @map("is_active")
+  rawData       Json?    @map("raw_data")
+  syncedAt      DateTime @default(now()) @map("synced_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, provider])
+  @@map("operational_cities")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RATE CARDS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model RateCard {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  provider        String   @default("flaship")
+  externalId      String?  @map("external_id")
+  companyCode     String?  @map("company_code")
+  serviceType     String?  @map("service_type")
+  originZone      String?  @map("origin_zone")
+  destinationZone String?  @map("destination_zone")
+  weightSlabMin   Decimal? @map("weight_slab_min") @db.Decimal(8, 3)
+  weightSlabMax   Decimal? @map("weight_slab_max") @db.Decimal(8, 3)
+  baseRate        Decimal? @map("base_rate") @db.Decimal(12, 2)
+  perKgRate       Decimal? @map("per_kg_rate") @db.Decimal(12, 2)
+  codCharges      Decimal? @map("cod_charges") @db.Decimal(12, 2)
+  fuelSurcharge   Decimal? @map("fuel_surcharge") @db.Decimal(12, 2)
+  rawData         Json?    @map("raw_data")
+  syncedAt        DateTime @default(now()) @map("synced_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, provider])
+  @@map("rate_cards")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHIPMENTS (rich courier record — one per booked order)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Shipment {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  orderId           String?   @unique @map("order_id") @db.Uuid
+  provider          String    @default("flaship")
+  companyId         String?   @map("company_id") @db.Uuid
+  pickupLocationId  String?   @map("pickup_location_id") @db.Uuid
+
+  // Courier-assigned
+  trackingNumber    String?   @map("tracking_number")
+  cn                String?   // Consignment Note number
+  externalId        String?   @map("external_id")
+  labelUrl          String?   @map("label_url")
+
+  // Status
+  status            String    @default("booked")   // booked|in_transit|out_for_delivery|delivered|returned|cancelled|failed
+  courierStatus     String?   @map("courier_status") // raw courier status string
+  lastTrackedAt     DateTime? @map("last_tracked_at")
+
+  // Shipment details
+  serviceType       String?   @map("service_type")
+  weight            Decimal?  @db.Decimal(8, 3)
+  pieces            Int       @default(1)
+  codAmount         Decimal?  @map("cod_amount") @db.Decimal(12, 2)
+
+  // Recipient
+  recipientName     String?   @map("recipient_name")
+  recipientPhone    String?   @map("recipient_phone")
+  recipientAddress  String?   @map("recipient_address")
+  recipientCity     String?   @map("recipient_city")
+
+  // Booking meta
+  bookedAt          DateTime? @map("booked_at")
+  deliveredAt       DateTime? @map("delivered_at")
+  returnedAt        DateTime? @map("returned_at")
+  cancelledAt       DateTime? @map("cancelled_at")
+
+  // API response storage (never lose courier data)
+  bookingRequest    Json?     @map("booking_request")
+  bookingResponse   Json?     @map("booking_response")
+
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  profile         Profile          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company         CourierCompany?  @relation(fields: [companyId], references: [id])
+  pickupLocation  PickupLocation?  @relation(fields: [pickupLocationId], references: [id])
+  timeline        ShipmentTimeline[]
+  trackingSnaps   TrackingSnapshot[]
+  labels          Label[]
+  loadsheetOrders LoadsheetOrder[]
+
+  @@index([userId])
+  @@index([trackingNumber])
+  @@index([userId, status])
+  @@index([orderId])
+  @@map("shipments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHIPMENT TIMELINE (append-only status events)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ShipmentTimeline {
+  id            String   @id @default(uuid()) @db.Uuid
+  shipmentId    String   @map("shipment_id") @db.Uuid
+  status        String
+  description   String?
+  location      String?
+  occurredAt    DateTime @map("occurred_at")
+  source        String   @default("courier") // courier | system | manual
+  rawData       Json?    @map("raw_data")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+  @@index([shipmentId, occurredAt])
+  @@map("shipment_timeline")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRACKING SNAPSHOTS (raw API responses — append-only, never overwrite)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model TrackingSnapshot {
+  id             String   @id @default(uuid()) @db.Uuid
+  shipmentId     String   @map("shipment_id") @db.Uuid
+  trackingNumber String   @map("tracking_number")
+  rawResponse    Json     @map("raw_response")
+  fetchedAt      DateTime @default(now()) @map("fetched_at")
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+  @@index([trackingNumber])
+  @@map("tracking_snapshots")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LABELS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Label {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  shipmentId     String    @map("shipment_id") @db.Uuid
+  trackingNumber String    @map("tracking_number")
+  labelUrl       String?   @map("label_url")
+  format         String    @default("pdf")
+  generatedAt    DateTime  @default(now()) @map("generated_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([shipmentId])
+  @@map("labels")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LABELS SUBMISSION / LOADSHEETS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Loadsheet {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  provider       String   @default("flaship")
+  externalId     String?  @map("external_id")
+  loadsheetUrl   String?  @map("loadsheet_url")
+  orderCount     Int      @default(0) @map("order_count")
+  status         String   @default("generated") // generated | submitted
+  rawResponse    Json?    @map("raw_response")
+  generatedAt    DateTime @default(now()) @map("generated_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  profile Profile         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders  LoadsheetOrder[]
+
+  @@index([userId])
+  @@map("loadsheets")
+}
+
+model LoadsheetOrder {
+  id           String @id @default(uuid()) @db.Uuid
+  loadsheetId  String @map("loadsheet_id") @db.Uuid
+  shipmentId   String @map("shipment_id") @db.Uuid
+  orderId      String @map("order_id") @db.Uuid
+
+  loadsheet Loadsheet @relation(fields: [loadsheetId], references: [id], onDelete: Cascade)
+  shipment  Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@unique([loadsheetId, shipmentId])
+  @@index([loadsheetId])
+  @@map("loadsheet_orders")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SYNC LOGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SyncLog {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  provider     String    @default("flaship")
+  syncType     String    @map("sync_type") // companies | cities | pickup_locations | rate_cards | tracking | full
+  status       String    @default("pending") // pending | running | success | failed
+  recordsSynced Int      @default(0) @map("records_synced")
+  errorMessage String?   @map("error_message")
+  startedAt    DateTime  @default(now()) @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+  durationMs   Int?      @map("duration_ms")
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, syncType])
+  @@index([userId, startedAt])
+  @@map("sync_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API LOGS (raw request/response log for every Flaship API call)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ApiLog {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  provider     String    @default("flaship")
+  endpoint     String
+  method       String    @default("POST")
+  requestBody  Json?     @map("request_body")
+  responseBody Json?     @map("response_body")
+  statusCode   Int?      @map("status_code")
+  isSuccess    Boolean   @default(false) @map("is_success")
+  errorMessage String?   @map("error_message")
+  durationMs   Int?      @map("duration_ms")
+  calledAt     DateTime  @default(now()) @map("called_at")
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, calledAt])
+  @@index([userId, isSuccess])
+  @@map("api_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COURIER ACTIVITY LOGS (user-facing audit trail)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CourierActivityLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  eventType     String   @map("event_type") // booked | tracking_update | label_generated | loadsheet_created | sync | connect | error | returned | cancelled
+  description   String
+  metadata      Json?
+  referenceId   String?  @map("reference_id")   // shipmentId | loadsheetId | etc.
+  referenceType String?  @map("reference_type")  // shipment | loadsheet | sync
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, eventType])
+  @@index([userId, createdAt])
+  @@map("courier_activity_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOKING ATTEMPTS (retry/failure history)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model BookingAttempt {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  orderId       String    @map("order_id") @db.Uuid
+  provider      String    @default("flaship")
+  attemptNumber Int       @default(1) @map("attempt_number")
+  status        String    @default("pending") // pending | success | failed
+  trackingNumber String?  @map("tracking_number")
+  requestPayload Json?    @map("request_payload")
+  responsePayload Json?   @map("response_payload")
+  errorMessage  String?   @map("error_message")
+  attemptedAt   DateTime  @default(now()) @map("attempted_at")
+
+  @@index([userId])
+  @@index([orderId])
+  @@map("booking_attempts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRODUCTS
+// ─────────────────────────────────────────────────────────────────────────────
 
 model Product {
   id            String   @id @default(uuid()) @db.Uuid
@@ -51,6 +523,10 @@ model Product {
 
   @@map("products")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ORDERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 model Order {
   id        String  @id @default(uuid()) @db.Uuid
@@ -73,17 +549,22 @@ model Order {
   trackingNumber  String? @map("tracking_number")
   labelUrl        String? @map("label_url")
   courierProvider String? @map("courier_provider")
+  courierStatus   String? @map("courier_status")  // NEW: real courier status
+  shipmentId      String? @map("shipment_id")     // NEW: FK to Shipment
 
-  rawInput  String?   @map("raw_input")
-  weight       Decimal? @db.Decimal(8, 2)
-  shippingType String?  @map("shipping_type")
-  createdAt DateTime  @default(now()) @map("created_at")
-  bookedAt  DateTime? @map("booked_at")
+  rawInput     String?   @map("raw_input")
+  weight       Decimal?  @db.Decimal(8, 2)
+  shippingType String?   @map("shipping_type")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  bookedAt     DateTime? @map("booked_at")
+  deliveredAt  DateTime? @map("delivered_at")  // NEW
+  returnedAt   DateTime? @map("returned_at")   // NEW
 
   profile Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
   product Product? @relation(fields: [productId], references: [id])
 
   @@index([userId])
   @@index([status])
+  @@index([trackingNumber])
   @@map("orders")
 }

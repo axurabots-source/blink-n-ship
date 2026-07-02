@@ -14,14 +14,31 @@ import {
     LogOut,
     Menu,
     X,
+    ChevronDown,
+    Settings,
+    FileText,
+    MapPin,
+    Globe,
+    DollarSign,
+    Package,
 } from 'lucide-react';
 
-const links = [
+const mainLinks = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/orders', label: 'Booking', icon: PackageSearch },
     { href: '/products', label: 'Inventory', icon: Boxes },
     { href: '/ledger', label: 'Ledger', icon: BookOpen },
-    { href: '/connect-courier', label: 'Courier', icon: Truck },
+];
+
+const courierSubLinks = [
+    { href: '/courier', label: 'Overview', icon: LayoutDashboard },
+    { href: '/courier/connect', label: 'Connect', icon: Globe },
+    { href: '/courier/shipments', label: 'Shipments', icon: Package },
+    { href: '/courier/pickup-locations', label: 'Pickup Locations', icon: MapPin },
+    { href: '/courier/companies', label: 'Companies', icon: Truck },
+    { href: '/courier/rate-cards', label: 'Rate Cards', icon: DollarSign },
+    { href: '/courier/cities', label: 'Cities', icon: Globe },
+    { href: '/courier/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function AppSidebar() {
@@ -32,6 +49,16 @@ export default function AppSidebar() {
     const [logoutHovered, setLogoutHovered] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
     const [accountType, setAccountType] = useState<string | null>(null);
+
+    // Group Courier state
+    const isCourierRoute = pathname.startsWith('/courier');
+    const [courierOpen, setCourierOpen] = useState(isCourierRoute);
+
+    useEffect(() => {
+        if (isCourierRoute) {
+            setCourierOpen(true);
+        }
+    }, [pathname, isCourierRoute]);
 
     useEffect(() => {
         const cached = localStorage.getItem('bns_account_type');
@@ -48,12 +75,10 @@ export default function AppSidebar() {
             .catch(() => {});
     }, []);
 
-    // Path change hone par close draw model
     useEffect(() => {
         setMobileOpen(false);
     }, [pathname]);
 
-    // Onboarding pages pe sidebar nahi dikhana
     const hideOn = ['/login', '/account-type'];
     if (hideOn.includes(pathname)) return null;
 
@@ -68,16 +93,18 @@ export default function AppSidebar() {
             flexDirection: 'column',
             height: '100%',
             width: '100%',
+            overflowY: 'auto',
+            background: '#0a0a0a',
         }}>
             {/* Title / Logo */}
             <div style={{
                 padding: '24px 20px 16px',
             }}>
-                {/* Logo row */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <motion.div
                         style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
                         whileHover="hover"
+                        onClick={() => router.push('/dashboard')}
                     >
                         <motion.div
                             variants={{
@@ -96,7 +123,6 @@ export default function AppSidebar() {
                             Blink N Ship
                         </h1>
                     </motion.div>
-                    {/* Mobile close button */}
                     <button
                         onClick={() => setMobileOpen(false)}
                         style={{ background: 'none', border: 'none', color: '#a3a3a3', cursor: 'pointer', display: 'none' }}
@@ -105,7 +131,6 @@ export default function AppSidebar() {
                         <X size={18} />
                     </button>
                 </div>
-                {/* Portal badge — below logo */}
                 {accountType && (
                     <div style={{
                         marginTop: 8,
@@ -133,7 +158,7 @@ export default function AppSidebar() {
                 flexDirection: 'column',
                 gap: '4px',
             }}>
-                {links.map((link) => {
+                {mainLinks.map((link) => {
                     const Icon = link.icon;
                     const active = pathname === link.href;
                     const isHovered = hoveredLink === link.href;
@@ -164,19 +189,121 @@ export default function AppSidebar() {
                                     : isHovered 
                                         ? '#ffffff' 
                                         : '#a3a3a3',
-                            }}
+                             }}
                         >
                             <Icon size={16} strokeWidth={active ? 2.5 : 2} />
                             {link.label}
                         </Link>
                     );
                 })}
+
+                {/* Collapsible Courier Group */}
+                <div style={{ display: 'flex', flexDirection: 'column', marginTop: '8px' }}>
+                    <button
+                        onClick={() => {
+                            if (!isCourierRoute) {
+                                router.push('/courier');
+                            }
+                            setCourierOpen(!courierOpen);
+                        }}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '10px 16px',
+                            borderRadius: '8px',
+                            fontSize: '0.875rem',
+                            fontWeight: 600,
+                            background: isCourierRoute ? 'rgba(204, 120, 92, 0.1)' : 'transparent',
+                            color: isCourierRoute ? '#CC785C' : '#a3a3a3',
+                            border: 'none',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            width: '100%',
+                            transition: 'all 0.15s ease',
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <Truck size={16} strokeWidth={2} />
+                            <span>Courier</span>
+                        </div>
+                        <ChevronDown 
+                            size={14} 
+                            style={{ 
+                                transform: courierOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                                transition: 'transform 0.2s ease'
+                            }} 
+                        />
+                    </button>
+
+                    <AnimatePresence initial={false}>
+                        {courierOpen && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                                style={{ overflow: 'hidden', paddingLeft: '8px' }}
+                            >
+                                <div style={{ 
+                                    display: 'flex', 
+                                    flexDirection: 'column', 
+                                    gap: '2px', 
+                                    paddingTop: '4px',
+                                    borderLeft: '1px solid rgba(255, 255, 255, 0.05)',
+                                    marginLeft: '24px',
+                                    paddingLeft: '12px'
+                                }}>
+                                    {courierSubLinks.map((subLink) => {
+                                        const SubIcon = subLink.icon;
+                                        const subActive = pathname === subLink.href;
+                                        const subHovered = hoveredLink === subLink.href;
+
+                                        return (
+                                            <Link
+                                                key={subLink.href}
+                                                href={subLink.href}
+                                                onMouseEnter={() => setHoveredLink(subLink.href)}
+                                                onMouseLeave={() => setHoveredLink(null)}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '10px',
+                                                    padding: '8px 12px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: 500,
+                                                    textDecoration: 'none',
+                                                    transition: 'all 0.15s ease',
+                                                    background: subActive 
+                                                        ? '#CC785C' 
+                                                        : subHovered 
+                                                            ? 'rgba(255, 255, 255, 0.04)' 
+                                                            : 'transparent',
+                                                    color: subActive 
+                                                        ? '#ffffff' 
+                                                        : subHovered 
+                                                            ? '#ffffff' 
+                                                            : '#8a8a8a',
+                                                }}
+                                            >
+                                                <SubIcon size={13} strokeWidth={subActive ? 2.2 : 1.8} />
+                                                {subLink.label}
+                                            </Link>
+                                        );
+                                    })}
+                                </div>
+                            </motion.div>
+                         )}
+                    </AnimatePresence>
+                </div>
             </nav>
 
             {/* Logout bottom section */}
             <div style={{
                 padding: '16px 12px',
                 borderTop: '1px solid #1a1a1a',
+                marginTop: 'auto',
             }}>
                 <button
                     onClick={handleLogout}
@@ -208,7 +335,6 @@ export default function AppSidebar() {
 
     return (
         <>
-            {/* Inject dynamic layouts globally */}
             <style dangerouslySetInnerHTML={{ __html: `
                 main {
                     margin-left: 240px !important;
@@ -243,33 +369,21 @@ export default function AppSidebar() {
                     .mobile-close-btn {
                         display: block !important;
                     }
-                    /* Page padding */
                     .bns-page { padding: 20px 16px !important; }
-                    /* Grids → 1 col */
                     .bns-grid { grid-template-columns: 1fr !important; }
-                    /* Stat cards → 2 col */
                     .bns-stat-grid { grid-template-columns: repeat(2,1fr) !important; }
-                    /* Product grid → 1 col */
                     .bns-product-grid { grid-template-columns: 1fr !important; }
-                    /* Tables → horizontal scroll */
                     .bns-table-wrap { overflow-x: auto !important; }
-                    /* Font scale */
                     h1 { font-size: 1.2rem !important; }
                     .bns-subtext { font-size: 0.78rem !important; }
-                    /* Header flex wrap */
                     .bns-header { flex-direction: column !important; gap: 12px !important; }
-                    /* Toolbar wrap */
                     .bns-toolbar { flex-direction: column !important; align-items: flex-start !important; }
-                    /* Form grids */
                     .bns-form-grid { grid-template-columns: 1fr !important; }
-                    /* Chart height */
                     .bns-chart { height: 200px !important; }
-                    /* Hide table on very small, use card list */
                     .bns-desktop-only { display: none !important; }
                 }
             ` }} />
 
-            {/* Mobile Toggle Button */}
             <button 
                 onClick={() => setMobileOpen(true)}
                 className="mobile-toggle-btn"
@@ -277,7 +391,6 @@ export default function AppSidebar() {
                 <Menu size={20} />
             </button>
 
-            {/* Desktop Sidebar */}
             <aside 
                 className="desktop-sidebar"
                 style={{
@@ -297,7 +410,6 @@ export default function AppSidebar() {
                 {sidebarContent}
             </aside>
 
-            {/* Mobile drawer with backdrop blur */}
             <AnimatePresence>
                 {mobileOpen && (
                     <>

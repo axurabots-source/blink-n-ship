@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { cancelShipment } from '@/lib/flaship';
 
 export async function PATCH(
     req: NextRequest,
@@ -45,9 +46,19 @@ export async function PATCH(
 
     // Unbooking handler: status change from booked -> draft
     if (updates.status === 'draft' && existing.status === 'booked') {
+        // Call Flaship cancel API if tracking number exists
+        if (existing.trackingNumber) {
+            try {
+                await cancelShipment(user.id, existing.trackingNumber);
+            } catch (cancelErr: any) {
+                console.warn(`Flaship cancel warning for ${existing.trackingNumber}:`, cancelErr.message);
+            }
+        }
         updates.trackingNumber = null;
         updates.labelUrl = null;
         updates.courierProvider = null;
+        updates.courierStatus = null;
+        updates.shipmentId = null;
         updates.bookedAt = null;
 
         if (existing.productId) {

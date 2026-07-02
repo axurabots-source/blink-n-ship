@@ -25,6 +25,11 @@ export default async function DashboardPage() {
         profitAgg,
         todayBookedOrders,
         graphOrders,
+        courierMetadata,
+        totalBooked,
+        inTransit,
+        delivered,
+        returned,
     ] = await Promise.all([
         prisma.order.count({ where: { userId: user.id } }),
         prisma.order.count({
@@ -66,6 +71,13 @@ export default async function DashboardPage() {
                 profit: true,
             },
         }),
+        prisma.courierAccountMetadata.findFirst({
+            where: { userId: user.id, provider: 'flaship' },
+        }),
+        prisma.shipment.count({ where: { userId: user.id } }),
+        prisma.shipment.count({ where: { userId: user.id, status: 'in_transit' } }),
+        prisma.shipment.count({ where: { userId: user.id, status: 'delivered' } }),
+        prisma.shipment.count({ where: { userId: user.id, status: 'returned' } }),
     ]);
 
     const totalRevenue = Number(revenueAgg._sum.sellingPrice ?? 0);
@@ -108,6 +120,11 @@ export default async function DashboardPage() {
                 bookedToday,
                 totalRevenue,
                 totalProfit,
+                ledgerBalance: courierMetadata?.balance ? Number(courierMetadata.balance) : 0,
+                totalBooked,
+                inTransit,
+                delivered,
+                returned,
             }}
             graphData={graphData}
             todayOrders={serialisedTodayOrders}

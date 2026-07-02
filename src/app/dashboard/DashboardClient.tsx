@@ -88,6 +88,11 @@ export default function DashboardClient({
         bookedToday: number;
         totalRevenue: number;
         totalProfit: number;
+        ledgerBalance?: number;
+        totalBooked?: number;
+        inTransit?: number;
+        delivered?: number;
+        returned?: number;
     };
     graphData: GraphDataPoint[];
     todayOrders: TodayOrder[];
@@ -99,6 +104,10 @@ export default function DashboardClient({
         { label: 'Booked Today', value: stats.bookedToday, icon: PackageCheck },
         { label: 'Total Revenue', value: `Rs ${stats.totalRevenue.toLocaleString('en-PK')}`, icon: DollarSign, color: '#0a0a0a' },
         { label: 'Total Profit', value: `Rs ${stats.totalProfit.toLocaleString('en-PK')}`, icon: TrendingUp, color: '#16a34a' },
+        { label: 'Ledger Balance', value: `Rs ${(stats.ledgerBalance || 0).toLocaleString('en-PK')}`, icon: DollarSign, color: '#CC785C' },
+        { label: 'Total Booked', value: stats.totalBooked || 0, icon: PackageCheck },
+        { label: 'In Transit', value: stats.inTransit || 0, icon: TrendingUp },
+        { label: 'Delivered', value: stats.delivered || 0, icon: CheckCircle, color: '#16a34a' },
     ];
 
     return (

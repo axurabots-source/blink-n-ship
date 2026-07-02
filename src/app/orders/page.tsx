@@ -97,6 +97,17 @@ export default function OrdersPage() {
     const [deleting, setDeleting] = useState(false);
     const [error, setError] = useState('');
     const [validationErrors, setValidationErrors] = useState<Set<string>>(new Set());
+    // Per-order field-level errors: Record<orderId, Set<fieldName>>
+    const [fieldErrors, setFieldErrors] = useState<Record<string, Set<string>>>({});
+    // City dropdown open state: Record<orderId, boolean>
+    const [cityDropdownOpen, setCityDropdownOpen] = useState<Record<string, boolean>>({});
+    const [syncingCities, setSyncingCities] = useState(false);
+    // Keyboard navigation highlight index for cities dropdown: Record<orderId, number>
+    const [activeCityIndex, setActiveCityIndex] = useState<Record<string, number>>({});
+    // Touched fields tracking: Record<orderId, Set<string>>
+    const [touchedFields, setTouchedFields] = useState<Record<string, Set<string>>>({});
+    // Input references for scrolling to first invalid field
+    const fieldRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
 
     // Animated delete confirmation state
     const [deletingTarget, setDeletingTarget] = useState<string | null>(null);
@@ -110,10 +121,55 @@ export default function OrdersPage() {
     // Navigation tabs
     const [activeTab, setActiveTab] = useState<'drafts' | 'booked'>('drafts');
 
+    // Per-order rate estimate state
+    const [rateEstimates, setRateEstimates] = useState<Record<string, any>>({});
+    // Per-order selected courier
+    const [selectedCourier, setSelectedCourier] = useState<Record<string, string>>({});
+    // Cities and courier companies lists
+    const [dbCities, setDbCities] = useState<{ id: string; name: string; code: string }[]>([]);
+    const [courierCompanies, setCourierCompanies] = useState<{ id: string; name: string; code: string }[]>([]);
+
     useEffect(() => {
         refresh();
         loadProducts();
+        loadCourierMeta();
     }, []);
+
+    async function loadCourierMeta() {
+        try {
+            const [citiesRes, companiesRes] = await Promise.all([
+                fetch('/api/courier/cities'),
+                fetch('/api/courier/companies'),
+            ]);
+            if (citiesRes.ok) {
+                const body = await citiesRes.json();
+                setDbCities(body.cities || []);
+            }
+            if (companiesRes.ok) {
+                const body = await companiesRes.json();
+                setCourierCompanies(body.companies || []);
+            }
+        } catch {
+            // courier not connected — silently ignore
+        }
+    }
+
+    async function handleSyncCities() {
+        setSyncingCities(true);
+        setError('');
+        try {
+            const res = await fetch('/api/courier/cities', { method: 'POST' });
+            if (!res.ok) {
+                throw new Error('Failed to synchronize operational cities.');
+            }
+            const body = await res.json();
+            setDbCities(body.cities || []);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setSyncingCities(false);
+        }
+    }
 
     async function refresh() {
         try {
@@ -157,6 +213,51 @@ export default function OrdersPage() {
 
     function editLocal(orderId: string, field: keyof Order, value: any) {
         setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, [field]: value } : o));
+        
+        // Remove field validation error instantly once corrected
+        setTouchedFields((prev) => {
+            const next = { ...prev };
+            if (!next[orderId]) next[orderId] = new Set();
+            next[orderId].add(String(field));
+            return next;
+        });
+
+        setFieldErrors((prev) => {
+            const next = { ...prev };
+            if (next[orderId]) {
+                const missing = new Set(next[orderId]);
+                let isFilled = false;
+                if (typeof value === 'string') {
+                    isFilled = !!value.trim();
+                } else {
+                    isFilled = value !== null && value !== undefined && value !== '';
+                }
+
+                // Additional check for city matching operational cities list
+                if (field === 'city' && isFilled) {
+                    const exists = dbCities.some(c => c.name.toLowerCase() === String(value).trim().toLowerCase());
+                    isFilled = exists;
+                }
+
+                if (isFilled) {
+                    missing.delete(String(field));
+                    if (missing.size === 0) {
+                        delete next[orderId];
+                        setValidationErrors((prevVal) => {
+                            const newVal = new Set(prevVal);
+                            newVal.delete(orderId);
+                            return newVal;
+                        });
+                    } else {
+                        next[orderId] = missing;
+                    }
+                } else {
+                    missing.add(String(field));
+                    next[orderId] = missing;
+                }
+            }
+            return next;
+        });
     }
 
     async function saveFieldsBatch(orderId: string, updatesObj: Record<string, any>) {
@@ -200,7 +301,13 @@ export default function OrdersPage() {
                 shippingType: shippingVal,
             };
 
-            setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, ...updates, costPrice: product.costPrice, weight: product.weight } : o));
+            setOrders((prev) => prev.map((o) => {
+                if (o.id === orderId) {
+                    fetchRateEstimate(orderId, weightVal, o.city || '');
+                    return { ...o, ...updates, costPrice: product.costPrice, weight: product.weight };
+                }
+                return o;
+            }));
             saveFieldsBatch(orderId, updates);
         } else {
             const updates = { productId: null };
@@ -209,13 +316,37 @@ export default function OrdersPage() {
         }
     }
 
+    async function fetchRateEstimate(orderId: string, weight: number, city: string, company?: string) {
+        if (!weight || !city) return;
+        try {
+            const params = new URLSearchParams({ weight: String(weight), city });
+            if (company) params.set('company', company);
+            const res = await fetch(`/api/courier/rate-estimate?${params}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            setRateEstimates((prev) => ({ ...prev, [orderId]: data }));
+        } catch {
+            // silently fail — courier may not be connected
+        }
+    }
+
     function handleWeightChange(orderId: string, weightStr: string) {
         const w = parseFloat(weightStr) || 0;
         const suggestedShipping = getShippingTypeFromWeight(w);
-
         const updates = { weight: w, shippingType: suggestedShipping };
-        setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, weight: weightStr, shippingType: suggestedShipping } : o));
+        setOrders((prev) => prev.map((o) => {
+            if (o.id === orderId) {
+                fetchRateEstimate(orderId, w, o.city || '', selectedCourier[orderId]);
+                return { ...o, weight: weightStr, shippingType: suggestedShipping };
+            }
+            return o;
+        }));
         saveFieldsBatch(orderId, updates);
+    }
+
+    function handleCourierChange(orderId: string, company: string, weight: string, city: string) {
+        setSelectedCourier((prev) => ({ ...prev, [orderId]: company }));
+        fetchRateEstimate(orderId, parseFloat(weight) || 0, city, company);
     }
 
     // Toggle expands
@@ -306,6 +437,61 @@ export default function OrdersPage() {
 
         // Perform validation
         const invalidOrders = new Set<string>();
+        const emptyFieldOrders = new Set<string>();
+        const newFieldErrors: Record<string, Set<string>> = {};
+
+        selectedDrafts.forEach((id) => {
+            const ord = draftOrders.find((o) => o.id === id);
+            if (!ord) return;
+
+            const courier = selectedCourier[id];
+            const missing = new Set<string>();
+            if (!ord.customerName?.trim()) missing.add('customerName');
+            if (!ord.phoneNumber?.trim()) missing.add('phoneNumber');
+            
+            // Check for valid city in operational database list (if populated)
+            const cityClean = (ord.city || '').trim().toLowerCase();
+            const validCityExists = dbCities.length === 0 || dbCities.some((c) => c.name.toLowerCase() === cityClean);
+            if (!ord.city?.trim() || !validCityExists) missing.add('city');
+            
+            if (!ord.address?.trim()) missing.add('address');
+            if (!ord.sellingPrice) missing.add('sellingPrice');
+            if (!ord.weight) missing.add('weight');
+            if (!courier) missing.add('courier');
+
+            if (missing.size > 0) {
+                emptyFieldOrders.add(id);
+                newFieldErrors[id] = missing;
+            }
+        });
+
+        if (emptyFieldOrders.size > 0) {
+            setValidationErrors(emptyFieldOrders);
+            setFieldErrors(newFieldErrors);
+            setExpandedDrafts((prev) => {
+                const next = new Set(prev);
+                emptyFieldOrders.forEach((id) => next.add(id));
+                return next;
+            });
+            setError('All fields (Customer Name, Phone, City, Address, COD Amount, Weight, and Courier Selection) must be filled with valid operational data before booking.');
+            
+            // Scroll to the first invalid field automatically
+            setTimeout(() => {
+                const firstOrderId = Array.from(emptyFieldOrders)[0];
+                const fieldsList = ['customerName', 'phoneNumber', 'city', 'address', 'sellingPrice', 'weight', 'courier'];
+                const missingList = newFieldErrors[firstOrderId];
+                const firstMissingField = fieldsList.find(f => missingList.has(f));
+                if (firstMissingField) {
+                    const el = fieldRefs.current[`${firstOrderId}-${firstMissingField}`];
+                    if (el) {
+                        el.focus();
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+            }, 100);
+            return;
+        }
+
         const hasInvalidPhone = Array.from(selectedDrafts).some((id) => {
             const ord = draftOrders.find((o) => o.id === id);
             return ord && isPhoneInvalid(ord.phoneNumber);
@@ -327,7 +513,6 @@ export default function OrdersPage() {
 
         if (invalidOrders.size > 0) {
             setValidationErrors(invalidOrders);
-            // Auto expand validation failed drafts
             setExpandedDrafts((prev) => {
                 const next = new Set(prev);
                 invalidOrders.forEach((id) => next.add(id));
@@ -343,7 +528,10 @@ export default function OrdersPage() {
             const res = await fetch('/api/orders/book', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ order_ids: Array.from(selectedDrafts) }),
+                body: JSON.stringify({ 
+                    order_ids: Array.from(selectedDrafts),
+                    orderCouriers: selectedCourier
+                }),
             });
             const body = await res.json();
             const failed = body.results?.filter((r: any) => !r.success) ?? [];
@@ -815,6 +1003,26 @@ export default function OrdersPage() {
                                     <option value="valid">Select Valid Only</option>
                                 </select>
 
+                                <button
+                                    onClick={handleSyncCities}
+                                    disabled={syncingCities}
+                                    style={{
+                                        border: `1px solid ${T.border}`,
+                                        background: T.bg,
+                                        color: T.fg,
+                                        borderRadius: '6px',
+                                        padding: '5px 12px',
+                                        fontSize: '0.8rem',
+                                        cursor: syncingCities ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 6,
+                                    }}
+                                >
+                                    {syncingCities ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                                    Sync Cities
+                                </button>
+
                                 {selectedDrafts.size > 0 && (
                                     <button
                                         onClick={handleDeleteSelectedDrafts}
@@ -933,38 +1141,163 @@ export default function OrdersPage() {
                                         {isExpanded && (
                                             <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${T.border}`, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
                                                 {/* Text Inputs */}
+                                                {(() => {
+                                                    const fe = fieldErrors[order.id];
+                                                    const errBorder = (f: string) => fe?.has(f) ? '#dc2626' : T.border;
+                                                    const cityQuery = (order.city || '').toLowerCase();
+                                                    const filteredCities = dbCities.filter(c =>
+                                                        !cityQuery || c.name.toLowerCase().includes(cityQuery)
+                                                    ).slice(0, 100);
+                                                    return (
+                                                        <>
                                                 <div>
-                                                    <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Customer Name</span>
+                                                    <span style={{ fontSize: '0.7rem', color: fe?.has('customerName') ? '#dc2626' : T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Customer Name{fe?.has('customerName') ? ' *' : ''}</span>
                                                     <input
                                                         type="text"
+                                                        ref={(el) => { fieldRefs.current[`${order.id}-customerName`] = el; }}
                                                         value={order.customerName || ''}
-                                                        onChange={(e) => editLocal(order.id, 'customerName', e.target.value)}
+                                                        onChange={(e) => { editLocal(order.id, 'customerName', e.target.value); }}
                                                         onBlur={(e) => saveField(order.id, 'customerName', e.target.value)}
-                                                        style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: T.fg, outline: 'none' }}
+                                                        style={{ width: '100%', border: `1px solid ${errBorder('customerName')}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: T.fg, outline: 'none', boxSizing: 'border-box' }}
                                                     />
                                                 </div>
 
                                                 <div>
-                                                    <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Phone Number</span>
+                                                    <span style={{ fontSize: '0.7rem', color: fe?.has('phoneNumber') ? '#dc2626' : T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Phone Number{fe?.has('phoneNumber') ? ' *' : ''}</span>
                                                     <input
                                                         type="text"
+                                                        ref={(el) => { fieldRefs.current[`${order.id}-phoneNumber`] = el; }}
                                                         value={order.phoneNumber || ''}
                                                         onChange={(e) => editLocal(order.id, 'phoneNumber', e.target.value)}
                                                         onBlur={(e) => saveField(order.id, 'phoneNumber', e.target.value)}
-                                                        style={{ width: '100%', border: `1px solid ${isInvalidPhone ? '#dc2626' : T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: isInvalidPhone ? '#dc2626' : T.fg, outline: 'none' }}
+                                                        style={{ width: '100%', border: `1px solid ${isInvalidPhone || fe?.has('phoneNumber') ? '#dc2626' : T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: isInvalidPhone ? '#dc2626' : T.fg, outline: 'none', boxSizing: 'border-box' }}
                                                     />
                                                 </div>
 
-                                                <div>
-                                                    <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>City</span>
+                                                <div style={{ position: 'relative' }}>
+                                                    <span style={{ fontSize: '0.7rem', color: fe?.has('city') ? '#dc2626' : T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>City{fe?.has('city') ? ' *' : ''}</span>
                                                     <input
                                                         type="text"
+                                                        ref={(el) => { fieldRefs.current[`${order.id}-city`] = el; }}
                                                         value={order.city || ''}
-                                                        onChange={(e) => editLocal(order.id, 'city', e.target.value)}
-                                                        onBlur={(e) => saveField(order.id, 'city', e.target.value)}
-                                                        style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: T.fg, outline: 'none' }}
+                                                        autoComplete="off"
+                                                        onChange={(e) => {
+                                                            editLocal(order.id, 'city', e.target.value);
+                                                            setCityDropdownOpen(prev => ({ ...prev, [order.id]: true }));
+                                                            setActiveCityIndex(prev => ({ ...prev, [order.id]: 0 }));
+                                                        }}
+                                                        onFocus={() => {
+                                                            setCityDropdownOpen(prev => ({ ...prev, [order.id]: true }));
+                                                            setActiveCityIndex(prev => ({ ...prev, [order.id]: 0 }));
+                                                        }}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'ArrowDown') {
+                                                                e.preventDefault();
+                                                                setActiveCityIndex(prev => ({
+                                                                    ...prev,
+                                                                    [order.id]: Math.min((prev[order.id] || 0) + 1, filteredCities.length - 1)
+                                                                }));
+                                                            } else if (e.key === 'ArrowUp') {
+                                                                e.preventDefault();
+                                                                setActiveCityIndex(prev => ({
+                                                                    ...prev,
+                                                                    [order.id]: Math.max((prev[order.id] || 0) - 1, 0)
+                                                                }));
+                                                            } else if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                const idx = activeCityIndex[order.id] || 0;
+                                                                if (filteredCities[idx]) {
+                                                                    editLocal(order.id, 'city', filteredCities[idx].name);
+                                                                    setCityDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                    saveField(order.id, 'city', filteredCities[idx].name);
+                                                                    fetchRateEstimate(order.id, parseFloat(order.weight || '0') || 0, filteredCities[idx].name, selectedCourier[order.id]);
+                                                                }
+                                                            } else if (e.key === 'Escape') {
+                                                                setCityDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                            }
+                                                        }}
+                                                        onBlur={(e) => {
+                                                            setTimeout(() => {
+                                                                setCityDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                const cityClean = e.target.value.trim().toLowerCase();
+                                                                if (!cityClean) {
+                                                                    editLocal(order.id, 'city', '');
+                                                                    saveField(order.id, 'city', '');
+                                                                    return;
+                                                                }
+                                                                // Only validate against list if dbCities is loaded
+                                                                if (dbCities.length > 0) {
+                                                                    const exists = dbCities.find(c => c.name.toLowerCase() === cityClean);
+                                                                    if (!exists) {
+                                                                        editLocal(order.id, 'city', '');
+                                                                        saveField(order.id, 'city', '');
+                                                                    } else {
+                                                                        editLocal(order.id, 'city', exists.name);
+                                                                        saveField(order.id, 'city', exists.name);
+                                                                        fetchRateEstimate(order.id, parseFloat(order.weight || '0') || 0, exists.name, selectedCourier[order.id]);
+                                                                    }
+                                                                } else {
+                                                                    // Fallback: save what they typed so it isn't erased if sync hasn't run yet
+                                                                    saveField(order.id, 'city', e.target.value.trim());
+                                                                }
+                                                            }, 220);
+                                                        }}
+                                                        placeholder={dbCities.length === 0 ? "No operational cities synced yet." : "Select operational city..."}
+                                                        style={{ width: '100%', border: `1px solid ${errBorder('city')}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: T.fg, outline: 'none', boxSizing: 'border-box' }}
                                                     />
+                                                    {cityDropdownOpen[order.id] && (
+                                                        <div style={{
+                                                            position: 'absolute', zIndex: 999,
+                                                            top: '100%', left: 0, right: 0,
+                                                            background: '#fff',
+                                                            border: `1px solid ${T.border}`,
+                                                            borderRadius: 8,
+                                                            boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
+                                                            maxHeight: 200,
+                                                            overflowY: 'auto',
+                                                            marginTop: 2,
+                                                        }}>
+                                                            {filteredCities.length > 0 ? (
+                                                                filteredCities.map((c, idx) => {
+                                                                    const isActive = (activeCityIndex[order.id] || 0) === idx;
+                                                                    return (
+                                                                        <div
+                                                                            key={c.id}
+                                                                            onMouseDown={(e) => { e.preventDefault(); }}
+                                                                            onClick={() => {
+                                                                                editLocal(order.id, 'city', c.name);
+                                                                                setCityDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                                saveField(order.id, 'city', c.name);
+                                                                                fetchRateEstimate(order.id, parseFloat(order.weight || '0') || 0, c.name, selectedCourier[order.id]);
+                                                                            }}
+                                                                            style={{
+                                                                                padding: '8px 12px',
+                                                                                fontSize: '0.82rem',
+                                                                                cursor: 'pointer',
+                                                                                color: T.fg,
+                                                                                background: isActive ? T.accentLight : 'transparent',
+                                                                                borderBottom: `1px solid ${T.border}`,
+                                                                                transition: 'background 0.1s ease',
+                                                                            }}
+                                                                            onMouseEnter={e => {
+                                                                                setActiveCityIndex(prev => ({ ...prev, [order.id]: idx }));
+                                                                            }}
+                                                                        >
+                                                                            {c.name}
+                                                                        </div>
+                                                                    );
+                                                                })
+                                                            ) : (
+                                                                <div style={{ padding: '10px 12px', fontSize: '0.8rem', color: '#dc2626', background: '#fef2f2', textAlign: 'center' }}>
+                                                                    No operational Flaship city found.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
+                                                        </>
+                                                    );
+                                                })()}
 
                                                 <div>
                                                     <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Quantity</span>
@@ -978,13 +1311,14 @@ export default function OrdersPage() {
                                                 </div>
 
                                                 <div style={{ gridColumn: '1 / -1' }}>
-                                                    <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Address</span>
+                                                    <span style={{ fontSize: '0.7rem', color: fieldErrors[order.id]?.has('address') ? '#dc2626' : T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Address{fieldErrors[order.id]?.has('address') ? ' *' : ''}</span>
                                                     <input
                                                         type="text"
+                                                        ref={(el) => { fieldRefs.current[`${order.id}-address`] = el; }}
                                                         value={order.address || ''}
                                                         onChange={(e) => editLocal(order.id, 'address', e.target.value)}
                                                         onBlur={(e) => saveField(order.id, 'address', e.target.value)}
-                                                        style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: T.fg, outline: 'none' }}
+                                                        style={{ width: '100%', border: `1px solid ${fieldErrors[order.id]?.has('address') ? '#dc2626' : T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: T.fg, outline: 'none', boxSizing: 'border-box' }}
                                                     />
                                                 </div>
 
@@ -1035,13 +1369,31 @@ export default function OrdersPage() {
 
                                                 {/* Pricing */}
                                                 <div>
-                                                    <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Selling Price (Rs)</span>
+                                                    <span style={{ fontSize: '0.7rem', color: fieldErrors[order.id]?.has('sellingPrice') ? '#dc2626' : T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>COD Amount (Rs){fieldErrors[order.id]?.has('sellingPrice') ? ' *' : ''}</span>
                                                     <input
                                                         type="number"
+                                                        ref={(el) => { fieldRefs.current[`${order.id}-sellingPrice`] = el; }}
                                                         value={order.sellingPrice || ''}
-                                                        onChange={(e) => editLocal(order.id, 'sellingPrice', e.target.value)}
-                                                        onBlur={(e) => saveField(order.id, 'sellingPrice', parseFloat(e.target.value) || 0)}
-                                                        style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: T.fg, outline: 'none' }}
+                                                        onChange={(e) => {
+                                                            editLocal(order.id, 'sellingPrice', e.target.value);
+                                                            const codVal = parseFloat(e.target.value) || 0;
+                                                            const costVal = parseFloat(order.costPrice || '0') || 0;
+                                                            const est = rateEstimates[order.id];
+                                                            const co = selectedCourier[order.id];
+                                                            const opt = est?.serviceOptions?.find((s: any) => co ? s.company?.toLowerCase() === co.toLowerCase() : true) || est?.serviceOptions?.[0];
+                                                            const shipCost = opt ? opt.shippingCost : 0;
+                                                            editLocal(order.id, 'profit', String(codVal - costVal - shipCost));
+                                                        }}
+                                                        onBlur={(e) => {
+                                                            const est = rateEstimates[order.id];
+                                                            const co = selectedCourier[order.id];
+                                                            const opt = est?.serviceOptions?.find((s: any) => co ? s.company?.toLowerCase() === co.toLowerCase() : true) || est?.serviceOptions?.[0];
+                                                            saveFieldsBatch(order.id, {
+                                                                sellingPrice: parseFloat(e.target.value) || 0,
+                                                                profit: (parseFloat(e.target.value) || 0) - (parseFloat(order.costPrice || '0') || 0) - (opt?.shippingCost || 0)
+                                                            });
+                                                        }}
+                                                        style={{ width: '100%', border: `1px solid ${fieldErrors[order.id]?.has('sellingPrice') ? '#dc2626' : T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: T.fg, outline: 'none', boxSizing: 'border-box' }}
                                                     />
                                                 </div>
 
@@ -1051,56 +1403,177 @@ export default function OrdersPage() {
                                                         type="number"
                                                         value={order.costPrice || ''}
                                                         readOnly={!!order.productId}
-                                                        onChange={(e) => editLocal(order.id, 'costPrice', e.target.value)}
-                                                        onBlur={(e) => saveField(order.id, 'costPrice', parseFloat(e.target.value) || 0)}
+                                                        onChange={(e) => {
+                                                            editLocal(order.id, 'costPrice', e.target.value);
+                                                            // update profit locally
+                                                            const codVal = parseFloat(order.sellingPrice || '0') || 0;
+                                                            const costVal = parseFloat(e.target.value) || 0;
+                                                            const est = rateEstimates[order.id];
+                                                            const opt = est?.serviceOptions?.[0];
+                                                            const shipCost = opt ? opt.shippingCost : 0;
+                                                            editLocal(order.id, 'profit', String(codVal - costVal - shipCost));
+                                                        }}
+                                                        onBlur={(e) => saveFieldsBatch(order.id, {
+                                                            costPrice: parseFloat(e.target.value) || 0,
+                                                            profit: (parseFloat(order.sellingPrice || '0') || 0) - (parseFloat(e.target.value) || 0) - (rateEstimates[order.id]?.serviceOptions?.[0]?.shippingCost || 0)
+                                                        })}
                                                         style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: order.productId ? T.muted : T.fg, background: order.productId ? T.card : T.bg, outline: 'none' }}
                                                     />
                                                 </div>
 
                                                 {/* Weight & Shipping Type */}
                                                 <div>
-                                                    <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Weight (kg)</span>
+                                                    <span style={{ fontSize: '0.7rem', color: fieldErrors[order.id]?.has('weight') ? '#dc2626' : T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Weight (kg){fieldErrors[order.id]?.has('weight') ? ' *' : ''}</span>
                                                     <input
                                                         type="number"
                                                         step="0.1"
+                                                        ref={(el) => { fieldRefs.current[`${order.id}-weight`] = el; }}
                                                         value={order.weight || ''}
                                                         readOnly={!!order.productId}
                                                         onChange={(e) => editLocal(order.id, 'weight', e.target.value)}
                                                         onBlur={(e) => handleWeightChange(order.id, e.target.value)}
-                                                        style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: order.productId ? T.muted : T.fg, background: order.productId ? T.card : T.bg, outline: 'none' }}
+                                                        style={{ width: '100%', border: `1px solid ${fieldErrors[order.id]?.has('weight') ? '#dc2626' : T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: order.productId ? T.muted : T.fg, background: order.productId ? T.card : T.bg, outline: 'none', boxSizing: 'border-box' }}
                                                     />
                                                 </div>
 
-                                                <div>
-                                                    <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Shipping Type</span>
-                                                    <div style={{ display: 'flex', gap: 6 }}>
-                                                        {['Overnight', 'Detain', 'Overland'].map((type) => {
-                                                            const active = order.shippingType === type;
-                                                            return (
-                                                                <button
-                                                                    key={type}
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        editLocal(order.id, 'shippingType', type);
-                                                                        saveField(order.id, 'shippingType', type);
-                                                                    }}
+                                                {/* Courier, Shipping Type, Estimated Shipping & Profit in one single row */}
+                                                <div style={{
+                                                    gridColumn: '1 / -1',
+                                                    display: 'grid',
+                                                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                                                    gap: 12,
+                                                    alignItems: 'end',
+                                                    background: '#fafafa',
+                                                    border: `1px solid ${T.border}`,
+                                                    borderRadius: 10,
+                                                    padding: '12px 14px',
+                                                    marginTop: 8
+                                                }}>
+                                                    {/* 1. Courier Dropdown */}
+                                                    {courierCompanies.length > 0 && (
+                                                        <div>
+                                                            <span style={{ fontSize: '0.7rem', color: fieldErrors[order.id]?.has('courier') ? '#dc2626' : T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Select Courier{fieldErrors[order.id]?.has('courier') ? ' *' : ''}</span>
+                                                            <div style={{ position: 'relative' }}>
+                                                                <select
+                                                                    ref={(el) => { fieldRefs.current[`${order.id}-courier`] = el; }}
+                                                                    value={selectedCourier[order.id] || ''}
+                                                                    onChange={(e) => handleCourierChange(order.id, e.target.value, order.weight || '0', order.city || '')}
                                                                     style={{
-                                                                        flex: 1,
-                                                                        border: `1px solid ${active ? T.accent : T.border}`,
-                                                                        background: active ? T.accentLight : T.bg,
-                                                                        color: active ? T.accent : T.fg,
-                                                                        padding: '6px 0',
-                                                                        borderRadius: '6px',
-                                                                        fontSize: '0.7rem',
-                                                                        fontWeight: 600,
-                                                                        cursor: 'pointer',
+                                                                        width: '100%', appearance: 'none',
+                                                                        border: `1px solid ${fieldErrors[order.id]?.has('courier') ? '#dc2626' : T.border}`, borderRadius: 6,
+                                                                        padding: '6px 28px 6px 10px',
+                                                                        fontSize: '0.8rem', color: T.fg,
+                                                                        background: T.bg, cursor: 'pointer', outline: 'none',
                                                                     }}
                                                                 >
-                                                                    {type}
-                                                                </button>
-                                                            );
-                                                        })}
+                                                                    <option value="">— Select Courier —</option>
+                                                                    {courierCompanies.map((co) => (
+                                                                        <option key={co.id} value={co.code}>
+                                                                            {co.name || co.code.toUpperCase()}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                                <ChevronDown
+                                                                    size={12}
+                                                                    style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: T.muted, pointerEvents: 'none' }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* 2. Shipping Type (Auto) */}
+                                                    <div>
+                                                        <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Shipping Type</span>
+                                                        <div style={{ display: 'flex', gap: 4 }}>
+                                                            {['Overnight', 'Detain', 'Overland'].map((type) => {
+                                                                const calculatedType = getShippingTypeFromWeight(parseFloat(order.weight || '0') || 0);
+                                                                const active = calculatedType === type;
+                                                                return (
+                                                                    <div
+                                                                        key={type}
+                                                                        style={{
+                                                                            flex: 1,
+                                                                            textAlign: 'center',
+                                                                            border: `1px solid ${active ? T.accent : T.border}`,
+                                                                            background: active ? T.accentLight : T.bg,
+                                                                            color: active ? T.accent : T.muted,
+                                                                            padding: '5px 0',
+                                                                            borderRadius: '4px',
+                                                                            fontSize: '0.65rem',
+                                                                            fontWeight: 600,
+                                                                            userSelect: 'none',
+                                                                            opacity: active ? 1 : 0.4,
+                                                                        }}
+                                                                    >
+                                                                        {type}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
+
+                                                    {/* 3. Estimated Shipping & 4. Estimated Profit */}
+                                                    {(() => {
+                                                        const est = rateEstimates[order.id];
+                                                        const opts = est?.serviceOptions || [];
+                                                        const co = selectedCourier[order.id];
+                                                        // Match the selected courier specifically, fallback to first
+                                                        const opt = co
+                                                            ? opts.find((s: any) => s.company?.toLowerCase() === co.toLowerCase()) || opts[0]
+                                                            : opts[0];
+                                                        const shippingCost = opt ? opt.shippingCost : 0;
+
+                                                        const codAmount = parseFloat(order.sellingPrice || '0') || 0;
+                                                        const costPrice = parseFloat(order.costPrice || '0') || 0;
+                                                        const profit = codAmount - costPrice - shippingCost;
+                                                        const hasEstimate = !!opt;
+
+                                                        return (
+                                                            <>
+                                                                <div>
+                                                                    <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Est. Shipping</span>
+                                                                    <div style={{
+                                                                        border: `1px solid ${hasEstimate ? '#bfdbfe' : T.border}`,
+                                                                        borderRadius: 6,
+                                                                        padding: '6px 10px',
+                                                                        fontSize: '0.8rem',
+                                                                        fontWeight: 700,
+                                                                        color: hasEstimate ? '#1d4ed8' : T.muted,
+                                                                        background: hasEstimate ? '#eff6ff' : T.bg,
+                                                                        minHeight: '32px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center'
+                                                                    }}>
+                                                                        {hasEstimate ? (
+                                                                            <span>
+                                                                                Rs {shippingCost.toLocaleString('en-PK')} <span style={{ fontSize: '0.62rem', color: '#3b82f6', fontWeight: 400 }}>incl. 16% GST</span>
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span style={{ fontSize: '0.72rem', fontWeight: 400 }}>{!order.weight || !order.city ? 'Fill weight & city' : !co ? 'Select courier' : 'No rate card'}</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div>
+                                                                    <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Est. Profit</span>
+                                                                    <div style={{
+                                                                        border: `1px solid ${profit > 0 ? '#bbf7d0' : profit < 0 ? '#fecaca' : T.border}`,
+                                                                        borderRadius: 6,
+                                                                        padding: '6px 10px',
+                                                                        fontSize: '0.85rem',
+                                                                        fontWeight: 800,
+                                                                        color: profit > 0 ? '#16a34a' : profit < 0 ? '#dc2626' : T.muted,
+                                                                        background: profit > 0 ? '#f0fdf4' : profit < 0 ? '#fef2f2' : T.bg,
+                                                                        minHeight: '32px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center'
+                                                                    }}>
+                                                                        {codAmount > 0 ? `Rs ${profit.toLocaleString('en-PK')}` : <span style={{ fontSize: '0.72rem', fontWeight: 400 }}>Enter COD amount</span>}
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                         )}
