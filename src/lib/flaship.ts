@@ -5,7 +5,7 @@ import { decrypt } from '@/lib/crypto';
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 const BASE_URL = 'https://partners.flaship.pk/mr';
-const TIMEOUT_MS = 20000;
+const TIMEOUT_MS = 60000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CREDENTIAL HELPERS
