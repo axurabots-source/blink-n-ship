@@ -110,143 +110,6 @@ export async function POST(request: Request) {
             data: { flashipConnected: true },
         });
 
-        // Step 5: Fetch and sync all reference data in parallel
-        const [locationsData, companiesData, servicesData, citiesData, ratesData] = await Promise.allSettled([
-            fetchPickupLocations(user.id),
-            fetchCourierCompanies(user.id),
-            fetchServiceTypes(user.id),
-            fetchOperationalCities(user.id),
-            fetchRateCards(user.id),
-        ]);
-
-        // ── Sync pickup locations ──────────────────────────────────────────────
-        if (locationsData.status === 'fulfilled') {
-            await prisma.pickupLocation.deleteMany({ where: { userId: user.id, provider: 'flaship' } });
-            const locs = locationsData.value.locations || [];
-            if (locs.length > 0) {
-                await prisma.pickupLocation.createMany({
-                    data: locs.map((l: any, idx: number) => {
-                        const isObj = typeof l === 'object' && l !== null;
-                        return {
-                            userId: user.id,
-                            provider: 'flaship',
-                            externalId: isObj ? String(l.id ?? idx) : String(idx),
-                            name: isObj ? (l.name || l.shipperName || l.address?.slice(0, 50) || `Location ${idx + 1}`) : `Location ${idx + 1}`,
-                            contactPerson: isObj ? (l.contact_person || l.shipperName || 'Contact') : 'Contact',
-                            phone: isObj ? (l.phone || l.shipperPhone || '00000000000') : '00000000000',
-                            address: isObj ? (l.address || '') : String(l),
-                            city: isObj ? (l.city || 'Karachi') : 'Karachi',
-                            area: isObj ? (l.area || '') : '',
-                            isDefault: isObj ? (l.is_default ?? idx === 0) : idx === 0,
-                            rawData: l,
-                        };
-                    }),
-                });
-            }
-        }
-
-        // ── Sync courier companies ──────────────────────────────────────────────
-        if (companiesData.status === 'fulfilled') {
-            await prisma.courierCompany.deleteMany({ where: { userId: user.id, provider: 'flaship' } });
-            const companies = companiesData.value.couriers || [];
-            if (companies.length > 0) {
-                await prisma.courierCompany.createMany({
-                    data: companies.map((c: any, idx: number) => {
-                        const isObj = typeof c === 'object' && c !== null;
-                        const name = isObj ? (c.name || c.label || String(c)) : String(c);
-                        const code = isObj ? (c.code || c.slug || name.toLowerCase().replace(/\s+/g, '_')) : name.toLowerCase().replace(/\s+/g, '_');
-                        return {
-                            userId: user.id,
-                            provider: 'flaship',
-                            externalId: isObj ? String(c.id ?? code) : code,
-                            name,
-                            code,
-                            isActive: isObj ? (c.active ?? true) : true,
-                            isDefault: isObj ? (c.is_default ?? idx === 0) : idx === 0,
-                            rawData: c,
-                        };
-                    }),
-                });
-            }
-        }
-
-        // ── Sync service types (derived — companies are strings so no service subtypes) ─
-        if (servicesData.status === 'fulfilled') {
-            await prisma.serviceType.deleteMany({ where: { userId: user.id, provider: 'flaship' } });
-            const services = servicesData.value.services || [];
-            if (services.length > 0) {
-                await prisma.serviceType.createMany({
-                    data: services.map((s: any) => {
-                        const isObj = typeof s === 'object' && s !== null;
-                        const name = isObj ? (s.name || s.label || String(s)) : String(s);
-                        const code = isObj ? (s.code || s.id || name.toLowerCase().replace(/\s+/g, '_')) : name.toLowerCase().replace(/\s+/g, '_');
-                        return {
-                            userId: user.id,
-                            provider: 'flaship',
-                            externalId: isObj ? String(s.id ?? code) : code,
-                            name,
-                            code,
-                            description: isObj ? (s.desc || s.description || '') : '',
-                            rawData: s,
-                        };
-                    }),
-                });
-            }
-        }
-
-        // ── Sync operational cities ────────────────────────────────────────────
-        if (citiesData.status === 'fulfilled') {
-            await prisma.operationalCity.deleteMany({ where: { userId: user.id, provider: 'flaship' } });
-            const cities = citiesData.value.cities || [];
-            if (cities.length > 0) {
-                await prisma.operationalCity.createMany({
-                    data: cities.map((c: any, idx: number) => {
-                        const isObj = typeof c === 'object' && c !== null;
-                        const name = isObj ? (c.name || c.city || String(c)) : String(c);
-                        const code = isObj ? (c.code || name.toLowerCase().replace(/\s+/g, '_')) : name.toLowerCase().replace(/\s+/g, '_');
-                        return {
-                            userId: user.id,
-                            provider: 'flaship',
-                            externalId: isObj ? String(c.id ?? code) : code,
-                            name,
-                            code,
-                            zone: isObj ? (c.zone || null) : null,
-                            isActive: isObj ? (c.active ?? true) : true,
-                            rawData: c,
-                        };
-                    }),
-                });
-            }
-        }
-
-        // ── Sync rate cards ────────────────────────────────────────────────────
-        if (ratesData.status === 'fulfilled') {
-            await prisma.rateCard.deleteMany({ where: { userId: user.id, provider: 'flaship' } });
-            const rates = ratesData.value.rates || [];
-            if (rates.length > 0) {
-                await prisma.rateCard.createMany({
-                    data: rates
-                        .filter((r: any) => typeof r === 'object' && r !== null)
-                        .map((r: any) => ({
-                            userId: user.id,
-                            provider: 'flaship',
-                            externalId: r.id ? String(r.id) : null,
-                            companyCode: r.company_code || r.company || null,
-                            serviceType: r.service_type || r.type || null,
-                            originZone: r.origin || null,
-                            destinationZone: r.destination || null,
-                            weightSlabMin: r.min_w != null ? Number(r.min_w) : null,
-                            weightSlabMax: r.max_w != null ? Number(r.max_w) : null,
-                            baseRate: r.base != null ? Number(r.base) : null,
-                            perKgRate: r.extra != null ? Number(r.extra) : null,
-                            codCharges: r.cod_fee != null ? Number(r.cod_fee) : null,
-                            fuelSurcharge: r.fuel != null ? Number(r.fuel) : null,
-                            rawData: r,
-                        })),
-                });
-            }
-        }
-
         // Create default courier settings if not existing
         await prisma.courierSettings.upsert({
             where: { userId: user.id },
@@ -260,11 +123,11 @@ export async function POST(request: Request) {
             success: true,
             account: accountData,
             synced: {
-                locations: locationsData.status === 'fulfilled',
-                companies: companiesData.status === 'fulfilled',
-                services: servicesData.status === 'fulfilled',
-                cities: citiesData.status === 'fulfilled',
-                rates: ratesData.status === 'fulfilled',
+                locations: true,
+                companies: false, // will auto-sync on load
+                services: false,
+                cities: false,    // will auto-sync on load
+                rates: false,
             },
         });
     } catch (err: any) {
