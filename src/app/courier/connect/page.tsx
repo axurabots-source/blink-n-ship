@@ -137,7 +137,7 @@ export default function ConnectCourier() {
                             <div style={{ marginBottom: '20px' }}>
                                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>API Token Key</label>
                                 <input
-                                    type="password"
+                                    type="text"
                                     value={apiKey}
                                     onChange={(e) => setApiKey(e.target.value)}
                                     placeholder="Enter your API token key"
