@@ -104,6 +104,13 @@ export default function OrdersPage() {
     const [syncingCities, setSyncingCities] = useState(false);
     // Keyboard navigation highlight index for cities dropdown: Record<orderId, number>
     const [activeCityIndex, setActiveCityIndex] = useState<Record<string, number>>({});
+    // Courier dropdown open state: Record<orderId, boolean>
+    const [courierDropdownOpen, setCourierDropdownOpen] = useState<Record<string, boolean>>({});
+    const [syncingCompanies, setSyncingCompanies] = useState(false);
+    // Keyboard navigation for courier dropdown: Record<orderId, number>
+    const [activeCourierIndex, setActiveCourierIndex] = useState<Record<string, number>>({});
+    // Courier search text: Record<orderId, string> (separate from selectedCourier which stores the code)
+    const [courierSearch, setCourierSearch] = useState<Record<string, string>>({});
     // Touched fields tracking: Record<orderId, Set<string>>
     const [touchedFields, setTouchedFields] = useState<Record<string, Set<string>>>({});
     // Input references for scrolling to first invalid field
@@ -160,7 +167,8 @@ export default function OrdersPage() {
         try {
             const res = await fetch('/api/courier/cities', { method: 'POST' });
             if (!res.ok) {
-                throw new Error('Failed to synchronize operational cities.');
+                const b = await res.json();
+                throw new Error(b.error || 'Failed to synchronize operational cities.');
             }
             const body = await res.json();
             setDbCities(body.cities || []);
@@ -168,6 +176,24 @@ export default function OrdersPage() {
             setError(err.message);
         } finally {
             setSyncingCities(false);
+        }
+    }
+
+    async function handleSyncCompanies() {
+        setSyncingCompanies(true);
+        setError('');
+        try {
+            const res = await fetch('/api/courier/companies', { method: 'POST' });
+            if (!res.ok) {
+                const b = await res.json();
+                throw new Error(b.error || 'Failed to synchronize courier companies.');
+            }
+            const body = await res.json();
+            setCourierCompanies(body.companies || []);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setSyncingCompanies(false);
         }
     }
 
@@ -435,7 +461,47 @@ export default function OrdersPage() {
     async function handleBookSelected() {
         if (selectedDrafts.size === 0) return;
 
-        // Perform validation
+        setBooking(true);
+        setError('');
+
+        // Step 1: Refresh merchant data from local DB before validating
+        let freshCities = dbCities;
+        let freshCompanies = courierCompanies;
+        try {
+            const [citiesRes, companiesRes] = await Promise.all([
+                fetch('/api/courier/cities'),
+                fetch('/api/courier/companies'),
+            ]);
+            if (citiesRes.ok) {
+                const b = await citiesRes.json();
+                freshCities = b.cities || [];
+                setDbCities(freshCities);
+            }
+            if (companiesRes.ok) {
+                const b = await companiesRes.json();
+                freshCompanies = b.companies || [];
+                setCourierCompanies(freshCompanies);
+            }
+        } catch {
+            setBooking(false);
+            setError('Failed to refresh merchant data before booking. Please try again.');
+            return;
+        }
+
+        // Step 2: Mark all fields of selected orders as touched so errors show
+        const allFields = ['customerName', 'phoneNumber', 'city', 'address', 'sellingPrice', 'weight', 'courier'];
+        setTouchedFields((prev) => {
+            const next = { ...prev };
+            selectedDrafts.forEach((id) => {
+                if (!next[id]) next[id] = new Set();
+                const s = new Set(next[id]);
+                allFields.forEach((f) => s.add(f));
+                next[id] = s;
+            });
+            return next;
+        });
+
+        // Step 3: Perform validation
         const invalidOrders = new Set<string>();
         const emptyFieldOrders = new Set<string>();
         const newFieldErrors: Record<string, Set<string>> = {};
@@ -448,12 +514,12 @@ export default function OrdersPage() {
             const missing = new Set<string>();
             if (!ord.customerName?.trim()) missing.add('customerName');
             if (!ord.phoneNumber?.trim()) missing.add('phoneNumber');
-            
-            // Check for valid city in operational database list (if populated)
+
+            // Validate city against freshly fetched operational cities
             const cityClean = (ord.city || '').trim().toLowerCase();
-            const validCityExists = dbCities.length === 0 || dbCities.some((c) => c.name.toLowerCase() === cityClean);
+            const validCityExists = freshCities.length === 0 || freshCities.some((c) => c.name.toLowerCase() === cityClean);
             if (!ord.city?.trim() || !validCityExists) missing.add('city');
-            
+
             if (!ord.address?.trim()) missing.add('address');
             if (!ord.sellingPrice) missing.add('sellingPrice');
             if (!ord.weight) missing.add('weight');
@@ -466,6 +532,7 @@ export default function OrdersPage() {
         });
 
         if (emptyFieldOrders.size > 0) {
+            setBooking(false);
             setValidationErrors(emptyFieldOrders);
             setFieldErrors(newFieldErrors);
             setExpandedDrafts((prev) => {
@@ -473,8 +540,8 @@ export default function OrdersPage() {
                 emptyFieldOrders.forEach((id) => next.add(id));
                 return next;
             });
-            setError('All fields (Customer Name, Phone, City, Address, COD Amount, Weight, and Courier Selection) must be filled with valid operational data before booking.');
-            
+            setError('Please fill all required fields (Customer Name, Phone, City, Address, COD Amount, Weight, Courier) before booking.');
+
             // Scroll to the first invalid field automatically
             setTimeout(() => {
                 const firstOrderId = Array.from(emptyFieldOrders)[0];
@@ -522,13 +589,12 @@ export default function OrdersPage() {
             return;
         }
 
-        setBooking(true);
-        setError('');
+        // setBooking was already set to true above — proceed with booking API call
         try {
             const res = await fetch('/api/orders/book', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     order_ids: Array.from(selectedDrafts),
                     orderCouriers: selectedCourier
                 }),
@@ -537,6 +603,8 @@ export default function OrdersPage() {
             const failed = body.results?.filter((r: any) => !r.success) ?? [];
             if (failed.length > 0) {
                 setError(`${failed.length} order(s) failed: ${failed[0].error}`);
+            } else if (!res.ok) {
+                setError(body.error || 'Booking failed.');
             }
             setSelectedDrafts(new Set());
             await refresh();
@@ -1023,6 +1091,26 @@ export default function OrdersPage() {
                                     Sync Cities
                                 </button>
 
+                                <button
+                                    onClick={handleSyncCompanies}
+                                    disabled={syncingCompanies}
+                                    style={{
+                                        border: `1px solid ${T.border}`,
+                                        background: T.bg,
+                                        color: T.fg,
+                                        borderRadius: '6px',
+                                        padding: '5px 12px',
+                                        fontSize: '0.8rem',
+                                        cursor: syncingCompanies ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 6,
+                                    }}
+                                >
+                                    {syncingCompanies ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                                    Sync Companies
+                                </button>
+
                                 {selectedDrafts.size > 0 && (
                                     <button
                                         onClick={handleDeleteSelectedDrafts}
@@ -1449,37 +1537,151 @@ export default function OrdersPage() {
                                                     padding: '12px 14px',
                                                     marginTop: 8
                                                 }}>
-                                                    {/* 1. Courier Dropdown */}
-                                                    {courierCompanies.length > 0 && (
-                                                        <div>
-                                                            <span style={{ fontSize: '0.7rem', color: fieldErrors[order.id]?.has('courier') ? '#dc2626' : T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Select Courier{fieldErrors[order.id]?.has('courier') ? ' *' : ''}</span>
+                                                    {/* 1. Courier Dropdown — always rendered, searchable autocomplete */}
+                                                    {(() => {
+                                                        const courierErr = fieldErrors[order.id]?.has('courier');
+                                                        const currentCode = selectedCourier[order.id] || '';
+                                                        const currentName = courierCompanies.find(c => c.code === currentCode)?.name || currentCode;
+                                                        const searchTerm = (courierSearch[order.id] ?? currentName).toLowerCase();
+                                                        const filteredCompanies = courierCompanies.filter(c =>
+                                                            !searchTerm || c.name.toLowerCase().includes(searchTerm) || c.code.toLowerCase().includes(searchTerm)
+                                                        ).slice(0, 50);
+                                                        return (
                                                             <div style={{ position: 'relative' }}>
-                                                                <select
+                                                                <span style={{ fontSize: '0.7rem', color: courierErr ? '#dc2626' : T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>
+                                                                    Courier{courierErr ? ' *' : ''}
+                                                                </span>
+                                                                <input
+                                                                    type="text"
                                                                     ref={(el) => { fieldRefs.current[`${order.id}-courier`] = el; }}
-                                                                    value={selectedCourier[order.id] || ''}
-                                                                    onChange={(e) => handleCourierChange(order.id, e.target.value, order.weight || '0', order.city || '')}
-                                                                    style={{
-                                                                        width: '100%', appearance: 'none',
-                                                                        border: `1px solid ${fieldErrors[order.id]?.has('courier') ? '#dc2626' : T.border}`, borderRadius: 6,
-                                                                        padding: '6px 28px 6px 10px',
-                                                                        fontSize: '0.8rem', color: T.fg,
-                                                                        background: T.bg, cursor: 'pointer', outline: 'none',
+                                                                    value={courierDropdownOpen[order.id] ? (courierSearch[order.id] ?? currentName) : currentName}
+                                                                    autoComplete="off"
+                                                                    placeholder={courierCompanies.length === 0 ? (syncingCompanies ? 'Syncing...' : 'No companies synced yet') : 'Select courier...'}
+                                                                    onChange={(e) => {
+                                                                        setCourierSearch(prev => ({ ...prev, [order.id]: e.target.value }));
+                                                                        setCourierDropdownOpen(prev => ({ ...prev, [order.id]: true }));
+                                                                        setActiveCourierIndex(prev => ({ ...prev, [order.id]: 0 }));
                                                                     }}
-                                                                >
-                                                                    <option value="">— Select Courier —</option>
-                                                                    {courierCompanies.map((co) => (
-                                                                        <option key={co.id} value={co.code}>
-                                                                            {co.name || co.code.toUpperCase()}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                                <ChevronDown
-                                                                    size={12}
-                                                                    style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: T.muted, pointerEvents: 'none' }}
+                                                                    onFocus={() => {
+                                                                        setCourierSearch(prev => ({ ...prev, [order.id]: '' }));
+                                                                        setCourierDropdownOpen(prev => ({ ...prev, [order.id]: true }));
+                                                                        setActiveCourierIndex(prev => ({ ...prev, [order.id]: 0 }));
+                                                                    }}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'ArrowDown') {
+                                                                            e.preventDefault();
+                                                                            setActiveCourierIndex(prev => ({ ...prev, [order.id]: Math.min((prev[order.id] || 0) + 1, filteredCompanies.length - 1) }));
+                                                                        } else if (e.key === 'ArrowUp') {
+                                                                            e.preventDefault();
+                                                                            setActiveCourierIndex(prev => ({ ...prev, [order.id]: Math.max((prev[order.id] || 0) - 1, 0) }));
+                                                                        } else if (e.key === 'Enter') {
+                                                                            e.preventDefault();
+                                                                            const idx = activeCourierIndex[order.id] || 0;
+                                                                            if (filteredCompanies[idx]) {
+                                                                                const co = filteredCompanies[idx];
+                                                                                handleCourierChange(order.id, co.code, order.weight || '0', order.city || '');
+                                                                                setCourierSearch(prev => ({ ...prev, [order.id]: co.name }));
+                                                                                setCourierDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                            }
+                                                                        } else if (e.key === 'Escape') {
+                                                                            setCourierDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                            setCourierSearch(prev => ({ ...prev, [order.id]: currentName }));
+                                                                        }
+                                                                    }}
+                                                                    onBlur={() => {
+                                                                        setTimeout(() => {
+                                                                            setCourierDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                            setCourierSearch(prev => ({ ...prev, [order.id]: currentName }));
+                                                                        }, 220);
+                                                                    }}
+                                                                    style={{
+                                                                        width: '100%',
+                                                                        border: `1px solid ${courierErr ? '#dc2626' : T.border}`,
+                                                                        borderRadius: 6,
+                                                                        padding: '6px 10px',
+                                                                        fontSize: '0.8rem',
+                                                                        color: T.fg,
+                                                                        background: T.bg,
+                                                                        outline: 'none',
+                                                                        boxSizing: 'border-box',
+                                                                    }}
                                                                 />
+                                                                {courierDropdownOpen[order.id] && (
+                                                                    <div style={{
+                                                                        position: 'absolute', zIndex: 1000,
+                                                                        top: '100%', left: 0, right: 0,
+                                                                        background: '#fff',
+                                                                        border: `1px solid ${T.border}`,
+                                                                        borderRadius: 8,
+                                                                        boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
+                                                                        maxHeight: 200,
+                                                                        overflowY: 'auto',
+                                                                        marginTop: 2,
+                                                                    }}>
+                                                                        {syncingCompanies ? (
+                                                                            <div style={{ padding: '10px 12px', fontSize: '0.8rem', color: T.muted, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                                                <Loader2 size={12} className="animate-spin" /> Syncing companies...
+                                                                            </div>
+                                                                        ) : filteredCompanies.length > 0 ? (
+                                                                            filteredCompanies.map((co, idx) => {
+                                                                                const isActive = (activeCourierIndex[order.id] || 0) === idx;
+                                                                                const isSelected = co.code === currentCode;
+                                                                                return (
+                                                                                    <div
+                                                                                        key={co.id}
+                                                                                        onMouseDown={(e) => { e.preventDefault(); }}
+                                                                                        onClick={() => {
+                                                                                            handleCourierChange(order.id, co.code, order.weight || '0', order.city || '');
+                                                                                            setCourierSearch(prev => ({ ...prev, [order.id]: co.name }));
+                                                                                            setCourierDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                                        }}
+                                                                                        onMouseEnter={() => setActiveCourierIndex(prev => ({ ...prev, [order.id]: idx }))}
+                                                                                        style={{
+                                                                                            padding: '8px 12px',
+                                                                                            fontSize: '0.82rem',
+                                                                                            cursor: 'pointer',
+                                                                                            color: isSelected ? T.accent : T.fg,
+                                                                                            fontWeight: isSelected ? 600 : 400,
+                                                                                            background: isActive ? T.accentLight : 'transparent',
+                                                                                            borderBottom: `1px solid ${T.border}`,
+                                                                                            transition: 'background 0.1s ease',
+                                                                                            display: 'flex',
+                                                                                            justifyContent: 'space-between',
+                                                                                            alignItems: 'center',
+                                                                                        }}
+                                                                                    >
+                                                                                        <span>{co.name || co.code.toUpperCase()}</span>
+                                                                                        {isSelected && <Check size={12} />}
+                                                                                    </div>
+                                                                                );
+                                                                            })
+                                                                        ) : (
+                                                                            <div style={{ padding: '10px 12px', fontSize: '0.8rem', color: T.muted, textAlign: 'center' }}>
+                                                                                <div>No courier companies synchronized.</div>
+                                                                                <button
+                                                                                    onMouseDown={(e) => e.preventDefault()}
+                                                                                    onClick={(e) => { e.stopPropagation(); handleSyncCompanies(); }}
+                                                                                    style={{
+                                                                                        marginTop: 6,
+                                                                                        border: `1px solid ${T.border}`,
+                                                                                        background: T.bg,
+                                                                                        color: T.accent,
+                                                                                        borderRadius: 6,
+                                                                                        padding: '4px 12px',
+                                                                                        fontSize: '0.75rem',
+                                                                                        fontWeight: 600,
+                                                                                        cursor: 'pointer',
+                                                                                    }}
+                                                                                >
+                                                                                    Sync Companies
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                        </div>
-                                                    )}
+                                                        );
+                                                    })()}
 
                                                     {/* 2. Shipping Type (Auto) */}
                                                     <div>
