@@ -136,15 +136,24 @@ export async function fetchPickupLocations(userId: string) {
 export async function fetchCourierCompanies(userId: string) {
     const { api_key } = await getCredentials(userId);
     const data = await apiRequest(api_key, '/company_list/', 'GET');
-    // Debug: log raw response shape
-    console.log('[Flaship] fetchCourierCompanies raw keys:', Object.keys(data));
-    console.log('[Flaship] companies type:', typeof data.companies, 'isArray:', Array.isArray(data.companies));
-    if (Array.isArray(data.companies) && data.companies.length > 0) {
-        console.log('[Flaship] companies[0]:', JSON.stringify(data.companies[0]));
-    } else {
-        console.log('[Flaship] companies value:', JSON.stringify(data.companies));
-    }
-    return { couriers: data.companies || [] };
+
+    // Flaship returns companies as a plain string array: ["TCS", "Daewoo", "Leopard", ...]
+    // Normalize each entry into an object so the route mapping works regardless of shape.
+    const raw: any[] = data.companies || [];
+    const couriers = raw.map((c: any) => {
+        if (typeof c === 'string') {
+            const name = c.trim();
+            const code = name.toLowerCase().replace(/\s+/g, '_');
+            return { id: code, name, code, active: true, is_default: false };
+        }
+        // Already an object — pass through as-is
+        return c;
+    });
+
+    console.log('[Flaship] fetchCourierCompanies → normalized couriers count:', couriers.length);
+    if (couriers.length > 0) console.log('[Flaship] couriers[0]:', JSON.stringify(couriers[0]));
+
+    return { couriers };
 }
 
 export async function fetchOperationalCities(userId: string) {
