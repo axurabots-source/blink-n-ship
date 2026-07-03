@@ -136,16 +136,71 @@ export async function fetchPickupLocations(userId: string) {
 export async function fetchCourierCompanies(userId: string) {
     const { api_key } = await getCredentials(userId);
     const data = await apiRequest(api_key, '/company_list/', 'GET');
+    // Debug: log raw response shape
+    console.log('[Flaship] fetchCourierCompanies raw keys:', Object.keys(data));
+    console.log('[Flaship] companies type:', typeof data.companies, 'isArray:', Array.isArray(data.companies));
+    if (Array.isArray(data.companies) && data.companies.length > 0) {
+        console.log('[Flaship] companies[0]:', JSON.stringify(data.companies[0]));
+    } else {
+        console.log('[Flaship] companies value:', JSON.stringify(data.companies));
+    }
     return { couriers: data.companies || [] };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FETCH OPERATIONAL CITIES
-// ─────────────────────────────────────────────────────────────────────────────
 export async function fetchOperationalCities(userId: string) {
     const { api_key } = await getCredentials(userId);
     const data = await apiRequest(api_key, '/company_list/', 'GET');
-    return { cities: data.operations_cities || [] };
+    
+    // Debug: log raw keys from Flaship response
+    console.log('[Flaship] fetchOperationalCities raw keys:', Object.keys(data));
+    
+    // Try all known key variations (double-o typo + others)
+    const opCitiesObj = data.operatioons_cities
+        || data.operations_cities
+        || data.operationalCities
+        || data.operational_cities
+        || {};
+    
+    console.log('[Flaship] opCitiesObj type:', typeof opCitiesObj, 'isArray:', Array.isArray(opCitiesObj));
+    const objKeys = typeof opCitiesObj === 'object' && !Array.isArray(opCitiesObj) ? Object.keys(opCitiesObj) : [];
+    console.log('[Flaship] opCitiesObj sub-keys:', objKeys.slice(0, 10));
+    if (objKeys.length > 0) {
+        const firstKey = objKeys[0];
+        console.log('[Flaship] cities[' + firstKey + '] sample:', JSON.stringify(opCitiesObj[firstKey]).substring(0, 200));
+    }
+
+    const uniqueCities = new Set<string>();
+    
+    if (Array.isArray(opCitiesObj)) {
+        // If it's a flat array of strings
+        opCitiesObj.forEach((city: any) => {
+            const name = typeof city === 'string' ? city : (city?.name || city?.city_name || '');
+            if (name.trim()) uniqueCities.add(name.trim());
+        });
+    } else {
+        // Object with courier-name keys e.g. { Leopard_all: ["Lahore", ...] }
+        Object.keys(opCitiesObj).forEach(key => {
+            const cityList = opCitiesObj[key];
+            if (Array.isArray(cityList)) {
+                cityList.forEach((city: any) => {
+                    const name = typeof city === 'string' ? city : (city?.name || city?.city_name || '');
+                    if (name.trim()) uniqueCities.add(name.trim());
+                });
+            }
+        });
+    }
+
+    console.log('[Flaship] parsed unique cities count:', uniqueCities.size);
+
+    const parsedCities = Array.from(uniqueCities).sort().map((name, idx) => ({
+        id: String(idx + 1),
+        name: name,
+        code: name.toLowerCase().replace(/\s+/g, '_'),
+        zone: null,
+        active: true,
+    }));
+
+    return { cities: parsedCities };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

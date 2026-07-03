@@ -296,6 +296,15 @@ export default function OrdersPage() {
             if (!res.ok) {
                 throw new Error('Failed to update order');
             }
+            // Merge saved fields back into local state — do NOT call refresh() which
+            // would overwrite all in-progress edits with server values
+            const savedData = await res.json();
+            const serverOrder = savedData.order || savedData;
+            setOrders((prev) => prev.map((o) => {
+                if (o.id !== orderId) return o;
+                // Merge only the fields we sent (plus any returned server fields)
+                return { ...o, ...updatesObj, ...(serverOrder?.id ? serverOrder : {}) };
+            }));
             if ('productId' in updatesObj && updatesObj.productId) {
                 setValidationErrors((prev) => {
                     const next = new Set(prev);
@@ -303,7 +312,6 @@ export default function OrdersPage() {
                     return next;
                 });
             }
-            refresh();
         } catch (err: any) {
             setError(err.message);
         }
@@ -1461,7 +1469,7 @@ export default function OrdersPage() {
                                                     <input
                                                         type="number"
                                                         ref={(el) => { fieldRefs.current[`${order.id}-sellingPrice`] = el; }}
-                                                        value={order.sellingPrice || ''}
+                                                        value={order.sellingPrice ?? ''}
                                                         onChange={(e) => {
                                                             editLocal(order.id, 'sellingPrice', e.target.value);
                                                             const codVal = parseFloat(e.target.value) || 0;
@@ -1489,7 +1497,7 @@ export default function OrdersPage() {
                                                     <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Cost Price (Rs)</span>
                                                     <input
                                                         type="number"
-                                                        value={order.costPrice || ''}
+                                                        value={order.costPrice ?? ''}
                                                         readOnly={!!order.productId}
                                                         onChange={(e) => {
                                                             editLocal(order.id, 'costPrice', e.target.value);
@@ -1516,7 +1524,7 @@ export default function OrdersPage() {
                                                         type="number"
                                                         step="0.1"
                                                         ref={(el) => { fieldRefs.current[`${order.id}-weight`] = el; }}
-                                                        value={order.weight || ''}
+                                                        value={order.weight ?? ''}
                                                         readOnly={!!order.productId}
                                                         onChange={(e) => editLocal(order.id, 'weight', e.target.value)}
                                                         onBlur={(e) => handleWeightChange(order.id, e.target.value)}
