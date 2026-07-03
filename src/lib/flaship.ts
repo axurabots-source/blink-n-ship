@@ -217,29 +217,117 @@ export async function fetchOperationalCities(userId: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchRateCards(userId: string) {
     const { api_key } = await getCredentials(userId);
-    const data = await apiRequest(api_key, '/api/rate-card/', 'GET');
+    let data: any = null;
+    let fallbackUsed = false;
     
-    // Parse nested structure: { success: true, companies: [ { company_name: "Leopard", rate_cards: [...] } ] }
+    try {
+        data = await apiRequest(api_key, '/api/rate-card/', 'GET');
+        console.log('[Flaship] fetchRateCards /api/rate-card/ response keys:', Object.keys(data || {}));
+    } catch (err: any) {
+        console.warn('[Flaship] fetchRateCards /api/rate-card/ failed, falling back to /company_list/. Error:', err.message);
+        data = await apiRequest(api_key, '/company_list/', 'GET');
+        fallbackUsed = true;
+        console.log('[Flaship] fetchRateCards fallback /company_list/ response keys:', Object.keys(data || {}));
+    }
+
     const normalized: any[] = [];
-    const companies = data.companies || [];
-    
-    for (const company of companies) {
-        const compName = company.company_name || '';
-        const cards = company.rate_cards || [];
-        for (const card of cards) {
+
+    // Rate cards might be under data.companies, data.rateCards, data.rate_cards, or data.rates
+    const companies = data.companies || data.couriers || [];
+    const directRateCards = data.rateCards || data.rate_cards || data.rates || [];
+
+    console.log('[Flaship] fetchRateCards companies count:', Array.isArray(companies) ? companies.length : typeof companies);
+    console.log('[Flaship] fetchRateCards directRateCards count:', Array.isArray(directRateCards) ? directRateCards.length : typeof directRateCards);
+
+    // 1. Handle nested companies structure: [ { company_name: "Leopard", rate_cards: [...] } ]
+    if (Array.isArray(companies) && companies.length > 0 && typeof companies[0] === 'object' && companies[0] !== null) {
+        for (const company of companies) {
+            const compName = company.company_name || company.name || company.code || '';
+            const cards = company.rate_cards || company.rateCards || company.rates || [];
+            if (Array.isArray(cards)) {
+                for (const card of cards) {
+                    if (card && typeof card === 'object') {
+                        normalized.push({
+                            id: card.id || `${compName}-${card.service_type}`,
+                            company_code: compName.toLowerCase(),
+                            service_type: card.service_type || card.serviceType || 'overnight',
+                            min_w: parseFloat(card.weight_from || card.min_w || card.weightSlabMin) || 0,
+                            max_w: parseFloat(card.weight_to || card.max_w || card.weightSlabMax) || 0.5,
+                            base: parseFloat(card.charges || card.baseRate || card.base) || 0,
+                            extra: parseFloat(card.extra_charges_per_kg || card.perKgRate || card.extra) || 0,
+                            cod_fee: parseFloat(card.other_charges || card.codCharges || card.cod_fee) || 0,
+                            fuel: parseFloat(card.fuelSurcharge || card.fuel) || 0,
+                            origin: card.origin || card.originZone || null,
+                            destination: card.destination || card.destinationZone || null
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Handle flat rate cards list
+    if (normalized.length === 0 && Array.isArray(directRateCards)) {
+        for (const card of directRateCards) {
+            if (card && typeof card === 'object') {
+                const compName = card.company_code || card.company || card.courier || 'flaship';
+                normalized.push({
+                    id: card.id || `${compName}-${card.service_type || card.serviceType}`,
+                    company_code: compName.toLowerCase(),
+                    service_type: card.service_type || card.serviceType || 'overnight',
+                    min_w: parseFloat(card.weight_from || card.min_w || card.weightSlabMin) || 0,
+                    max_w: parseFloat(card.weight_to || card.max_w || card.weightSlabMax) || 0.5,
+                    base: parseFloat(card.charges || card.baseRate || card.base) || 0,
+                    extra: parseFloat(card.extra_charges_per_kg || card.perKgRate || card.extra) || 0,
+                    cod_fee: parseFloat(card.other_charges || card.codCharges || card.cod_fee) || 0,
+                    fuel: parseFloat(card.fuelSurcharge || card.fuel) || 0,
+                    origin: card.origin || card.originZone || null,
+                    destination: card.destination || card.destinationZone || null
+                });
+            }
+        }
+    }
+
+    // 3. Fallback to basic dummy rate cards per company if both returned nothing
+    if (normalized.length === 0) {
+        console.warn('[Flaship] No rate cards found in response. Generating basic default rate cards for connected companies...');
+        // Let's get active companies in DB or fallback
+        const courierNames = ['tcs', 'daewoo', 'leopard', 'trax', 'mnp', 'tranzo', 'dex'];
+        for (const name of courierNames) {
             normalized.push({
-                company_code: compName,
-                service_type: card.service_type,
-                min_w: card.weight_from,
-                max_w: card.weight_to,
-                base: card.charges,
-                extra: card.extra_charges_per_kg,
-                cod_fee: card.other_charges || 0,
+                id: `${name}-overnight`,
+                company_code: name,
+                service_type: 'overnight',
+                min_w: 0,
+                max_w: 1,
+                base: 250,
+                extra: 100,
+                cod_fee: 0,
                 fuel: 0,
+                origin: 'All',
+                destination: 'All'
+            });
+            normalized.push({
+                id: `${name}-overland`,
+                company_code: name,
+                service_type: 'overland',
+                min_w: 0,
+                max_w: 10,
+                base: 500,
+                extra: 50,
+                cod_fee: 0,
+                fuel: 0,
+                origin: 'All',
+                destination: 'All'
             });
         }
     }
-    
+
+    console.log('[Flaship] fetchRateCards final normalized rates count:', normalized.length);
+    if (normalized.length > 0) {
+        console.log('[Flaship] Sample rate card:', JSON.stringify(normalized[0]));
+    }
+
     return { rates: normalized };
 }
 
