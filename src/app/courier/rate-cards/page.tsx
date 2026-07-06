@@ -75,6 +75,63 @@ export default function RateCards() {
             }}
             className="bns-page"
         >
+            <style>{`
+                .bns-ratetable { display: block; }
+                .bns-ratecards { display: none; }
+
+                .bns-rate-card {
+                    border: 1.5px solid ${T.border};
+                    border-radius: 12px;
+                    padding: 14px 16px;
+                    margin-bottom: 10px;
+                    background: ${T.bg};
+                }
+                .bns-rate-card-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 8px;
+                }
+                .bns-rate-card-company {
+                    font-size: 0.82rem;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    color: ${T.fg};
+                }
+                .bns-rate-card-service {
+                    font-size: 0.72rem;
+                    color: ${T.accent};
+                    font-weight: 600;
+                    text-transform: capitalize;
+                    background: ${T.accentLight};
+                    padding: 2px 8px;
+                    border-radius: 6px;
+                }
+                .bns-rate-card-detail {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px 16px;
+                    font-size: 0.76rem;
+                    color: ${T.muted};
+                    margin-bottom: 8px;
+                }
+                .bns-rate-card-detail span { display: flex; align-items: center; gap: 4px; }
+                .bns-rate-card-pricing {
+                    display: flex;
+                    gap: 16px;
+                    font-size: 0.82rem;
+                    font-weight: 600;
+                    color: ${T.fg};
+                    padding-top: 8px;
+                    border-top: 1px solid ${T.border};
+                }
+                .bns-rate-card-pricing span:last-child { color: ${T.muted}; font-weight: 500; }
+
+                @media (max-width: 768px) {
+                    .bns-ratetable { display: none; }
+                    .bns-ratecards { display: block; margin-top: 16px; }
+                }
+            `}</style>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }} className="bns-header">
                 <div>
                     <h1 style={{ fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: '6px' }}>Service Rate Cards</h1>
@@ -91,7 +148,7 @@ export default function RateCards() {
             </div>
 
             {/* Filter */}
-            <div style={{ marginBottom: '24px', position: 'relative', width: '300px' }}>
+            <div style={{ marginBottom: '24px', position: 'relative', width: '300px', maxWidth: '100%' }} className="bns-toolbar">
                 <Search size={16} color={T.muted} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                 <input
                     type="text"
@@ -103,7 +160,7 @@ export default function RateCards() {
             </div>
 
             {/* Table */}
-            <div style={{ border: `1px solid ${T.border}`, borderRadius: '12px', overflow: 'hidden' }}>
+            <div className="bns-ratetable" style={{ border: `1px solid ${T.border}`, borderRadius: '12px', overflow: 'hidden' }}>
                 {loading ? (
                     <div style={{ padding: '40px', textAlign: 'center', color: T.muted }}>Loading rate cards...</div>
                 ) : (
@@ -143,6 +200,38 @@ export default function RateCards() {
                     </div>
                 )}
             </div>
+
+            {/* Mobile loading */}
+            {loading && (
+                <div className="bns-ratecards" style={{ padding: '40px', textAlign: 'center', color: T.muted }}>Loading rate cards...</div>
+            )}
+
+            {/* Mobile Cards */}
+            {!loading && (
+                <div className="bns-ratecards">
+                    {filtered.length === 0 ? (
+                        <div style={{ padding: '40px', textAlign: 'center', color: T.muted }}>No rate cards found.</div>
+                    ) : (
+                        filtered.map((r, idx) => (
+                            <div key={r.id || idx} className="bns-rate-card">
+                                <div className="bns-rate-card-header">
+                                    <span className="bns-rate-card-company">{r.companyCode}</span>
+                                    <span className="bns-rate-card-service">{r.serviceType}</span>
+                                </div>
+                                <div className="bns-rate-card-detail">
+                                    <span>📍 From: {r.originZone}</span>
+                                    <span>📦 To: {r.destinationZone}</span>
+                                    <span>⚖️ {r.weightSlabMin?.toString()} - {r.weightSlabMax?.toString()} KG</span>
+                                </div>
+                                <div className="bns-rate-card-pricing">
+                                    <span>PKR {r.baseRate?.toString()}</span>
+                                    <span>+ PKR {r.perKgRate?.toString()}/KG</span>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
         </motion.div>
     );
 }

@@ -84,6 +84,7 @@ export default function OrdersPage() {
     const [selectedDrafts, setSelectedDrafts] = useState<Set<string>>(new Set());
     const [selectedBooked, setSelectedBooked] = useState<Set<string>>(new Set());
     const [expandedDrafts, setExpandedDrafts] = useState<Set<string>>(new Set());
+    const [productsLoaded, setProductsLoaded] = useState(false);
     
     // Inline editing booked orders state
     const [editingBookedId, setEditingBookedId] = useState<string | null>(null);
@@ -111,6 +112,15 @@ export default function OrdersPage() {
     const [activeCourierIndex, setActiveCourierIndex] = useState<Record<string, number>>({});
     // Courier search text: Record<orderId, string> (separate from selectedCourier which stores the code)
     const [courierSearch, setCourierSearch] = useState<Record<string, string>>({});
+    // Product dropdown state: Record<orderId, boolean>
+    const [productDropdownOpen, setProductDropdownOpen] = useState<Record<string, boolean>>({});
+    // Product search text: Record<orderId, string>
+    const [productSearch, setProductSearch] = useState<Record<string, string>>({});
+    // Keyboard navigation for product dropdown: Record<orderId, number>
+    const [activeProductIndex, setActiveProductIndex] = useState<Record<string, number>>({});
+    // Bulk bar custom select state
+    const [bulkSelectOpen, setBulkSelectOpen] = useState(false);
+    const [bulkSelectLabel, setBulkSelectLabel] = useState('Select...');
     // Touched fields tracking: Record<orderId, Set<string>>
     const [touchedFields, setTouchedFields] = useState<Record<string, Set<string>>>({});
     // Input references for scrolling to first invalid field
@@ -142,7 +152,7 @@ export default function OrdersPage() {
         if (cache) {
             if (cache.orders) setOrders(cache.orders);
             if (cache.profile) setProfile(cache.profile);
-            if (cache.products) setProducts(cache.products);
+            if (cache.products) { setProducts(cache.products); setProductsLoaded(true); }
             if (cache.dbCities) setDbCities(cache.dbCities);
             if (cache.courierCompanies) setCourierCompanies(cache.courierCompanies);
         }
@@ -264,6 +274,7 @@ export default function OrdersPage() {
         const body = await res.json();
         const fetchedProducts = body.products || [];
         setProducts(fetchedProducts);
+        setProductsLoaded(true);
         // Update cache
         if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
         (window as any).__BNS_CACHE__.products = fetchedProducts;
@@ -525,7 +536,6 @@ export default function OrdersPage() {
     async function handleBookSelected() {
         if (selectedDrafts.size === 0) return;
 
-        setBooking(true);
         setError('');
 
         // Step 1: Refresh merchant data from local DB before validating
@@ -547,7 +557,6 @@ export default function OrdersPage() {
                 setCourierCompanies(freshCompanies);
             }
         } catch {
-            setBooking(false);
             setError('Failed to refresh merchant data before booking. Please try again.');
             return;
         }
@@ -596,7 +605,6 @@ export default function OrdersPage() {
         });
 
         if (emptyFieldOrders.size > 0) {
-            setBooking(false);
             setValidationErrors(emptyFieldOrders);
             setFieldErrors(newFieldErrors);
             setExpandedDrafts((prev) => {
@@ -653,13 +661,21 @@ export default function OrdersPage() {
             return;
         }
 
-        // setBooking was already set to true above — proceed with booking API call
+        // Optimistic UI: immediately move selected drafts to booked
+        const selectedIds = new Set(selectedDrafts);
+        const now = new Date().toISOString();
+        setOrders((prev) => prev.map((o) => selectedIds.has(o.id) ? { ...o, status: 'booked', bookedAt: now, trackingNumber: o.trackingNumber || 'booking...' } : o));
+        setSelectedDrafts(new Set());
+        setActiveTab('booked');
+
+        // Process in background
+        setBooking(true);
         try {
             const res = await fetch('/api/orders/book', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    order_ids: Array.from(selectedDrafts),
+                    order_ids: Array.from(selectedIds),
                     orderCouriers: selectedCourier
                 }),
             });
@@ -670,7 +686,6 @@ export default function OrdersPage() {
             } else if (!res.ok) {
                 setError(body.error || 'Booking failed.');
             }
-            setSelectedDrafts(new Set());
             await refresh();
             await loadProducts();
         } catch (err: any) {
@@ -777,31 +792,136 @@ export default function OrdersPage() {
 
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-            style={{
-                minHeight: '100vh',
-                background: T.bg,
-                padding: '40px 48px',
-                fontFamily: 'var(--font-geist-sans), sans-serif',
-                boxSizing: 'border-box',
-            }}
-            className="bns-page"
-        >
-            {/* Animated Delete Confirmation Modal */}
-            <AnimatePresence>
-                {deletingTarget && (
+        <>
+        <style>{`
+            .bns-orders-booked-table { display: block; }
+            .bns-orders-booked-cards { display: none; }
+            .bns-order-card {
+                border: 1.5px solid ${T.border};
+                border-radius: 12px;
+                padding: 14px 16px;
+                margin-bottom: 10px;
+                background: ${T.bg};
+            }
+            .bns-order-card-row {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .bns-order-card-name {
+                font-size: 0.88rem;
+                font-weight: 700;
+                color: ${T.fg};
+                margin-bottom: 4px;
+            }
+            .bns-order-card-meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px 12px;
+                font-size: 0.76rem;
+                color: ${T.muted};
+                margin-bottom: 6px;
+            }
+            .bns-order-card-meta span { display: flex; align-items: center; gap: 4px; }
+            .bns-order-card-tracking {
+                font-size: 0.72rem;
+                font-family: var(--font-geist-mono);
+                color: ${T.muted};
+                background: ${T.card};
+                padding: 2px 8px;
+                border-radius: 4px;
+                display: inline-block;
+            }
+            .bns-order-card-profit {
+                font-size: 0.82rem;
+                font-weight: 700;
+                color: #16a34a;
+            }
+            .bns-order-card-status {
+                font-size: 0.65rem;
+                font-weight: 600;
+                color: #fff;
+                background: ${T.accent};
+                padding: 1px 8px;
+                border-radius: 20px;
+                display: inline-block;
+            }
+
+            @media (max-width: 768px) {
+                .bns-orders-booked-table { display: none; }
+                .bns-orders-booked-cards { display: block; margin-top: 16px; }
+                .bns-orders-bulk-bar {
+                    flex-direction: column !important;
+                    align-items: stretch !important;
+                    gap: 10px !important;
+                }
+                .bns-orders-bulk-bar > div:first-child {
+                    flex-wrap: wrap !important;
+                }
+                .bns-orders-bulk-actions {
+                    justify-content: flex-start !important;
+                    width: 100% !important;
+                }
+                .bns-orders-draft-bar {
+                    flex-direction: column !important;
+                    align-items: stretch !important;
+                    gap: 10px !important;
+                }
+                .bns-orders-draft-bar > div:first-child {
+                    flex-wrap: wrap !important;
+                    gap: 8px !important;
+                }
+                .bns-orders-draft-bar button:last-child {
+                    width: 100% !important;
+                    justify-content: center !important;
+                }
+                .bns-orders-extract {
+                    flex-direction: column !important;
+                    align-items: stretch !important;
+                }
+                .bns-orders-extract button {
+                    width: 100% !important;
+                    justify-content: center !important;
+                }
+                .bns-orders-tabs {
+                    width: 100% !important;
+                    display: flex !important;
+                }
+                .bns-orders-tabs button {
+                    flex: 1 !important;
+                    text-align: center !important;
+                }
+                .bns-orders-draft-header {
+                    flex-wrap: wrap !important;
+                    gap: 6px !important;
+                }
+                .bns-orders-draft-header > div:first-child {
+                    flex-wrap: wrap !important;
+                    gap: 6px !important;
+                }
+            }
+            .bns-dropdown {
+                scrollbar-width: thin;
+                scrollbar-color: #ddd transparent;
+            }
+            .bns-dropdown::-webkit-scrollbar { width: 5px; }
+            .bns-dropdown::-webkit-scrollbar-track { background: transparent; }
+            .bns-dropdown::-webkit-scrollbar-thumb { background: #ddd; border-radius: 10px; }
+        `}</style>
+        {/* Animated Delete Confirmation Modal */}
+        <AnimatePresence>
+            {deletingTarget && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 20, pointerEvents: 'none' }}>
                     <motion.div
                         initial={{ opacity: 0, y: -50 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -50 }}
                         style={{
-                            position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
                             background: '#ffffff', border: '1px solid #fecaca', borderRadius: 12,
-                            boxShadow: '0 10px 30px rgba(0,0,0,0.1)', zIndex: 1000,
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
                             padding: '20px 24px', width: '90%', maxWidth: '440px', boxSizing: 'border-box',
+                            pointerEvents: 'auto',
                         }}
                     >
                         {deleteProgress === null ? (
@@ -836,21 +956,23 @@ export default function OrdersPage() {
                             </div>
                         )}
                     </motion.div>
-                )}
-            </AnimatePresence>
+                </div>
+            )}
+        </AnimatePresence>
 
-            {/* Unbook Confirmation Modal */}
-            <AnimatePresence>
-                {unbookingId && (
+        {/* Unbook Confirmation Modal */}
+        <AnimatePresence>
+            {unbookingId && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 1001, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 20, pointerEvents: 'none' }}>
                     <motion.div
                         initial={{ opacity: 0, y: -50 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -50 }}
                         style={{
-                            position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
                             background: '#ffffff', border: '1px solid #fed7aa', borderRadius: 12,
-                            boxShadow: '0 10px 30px rgba(0,0,0,0.1)', zIndex: 1001,
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
                             padding: '20px 24px', width: '90%', maxWidth: '420px', boxSizing: 'border-box',
+                            pointerEvents: 'auto',
                         }}
                     >
                         {unbookProgress === null ? (
@@ -883,32 +1005,48 @@ export default function OrdersPage() {
                             </div>
                         )}
                     </motion.div>
-                )}
-            </AnimatePresence>
+                </div>
+            )}
+        </AnimatePresence>
 
-            {/* Extracting animation overlay */}
-            <AnimatePresence>
-                {extracting && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        style={{
-                            position: 'fixed', top: 20, right: 24,
-                            background: '#0a0a0a', color: '#fff',
-                            borderRadius: 10, padding: '10px 18px',
-                            zIndex: 1000, display: 'flex', alignItems: 'center', gap: 10,
-                            fontSize: '0.82rem', fontWeight: 600,
-                            boxShadow: '0 6px 20px rgba(0,0,0,0.2)',
-                        }}
-                    >
-                        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
-                            <Sparkles size={14} color="#CC785C" />
-                        </motion.div>
-                        Extracting orders with AI...
+        {/* Extracting animation overlay */}
+        <AnimatePresence>
+            {extracting && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    style={{
+                        position: 'fixed', top: 20, right: 24,
+                        background: '#0a0a0a', color: '#fff',
+                        borderRadius: 10, padding: '10px 18px',
+                        zIndex: 1000, display: 'flex', alignItems: 'center', gap: 10,
+                        fontSize: '0.82rem', fontWeight: 600,
+                        boxShadow: '0 6px 20px rgba(0,0,0,0.2)',
+                    }}
+                >
+                    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
+                        <Sparkles size={14} color="#CC785C" />
                     </motion.div>
-                )}
-            </AnimatePresence>
+                    Extracting orders with AI...
+                </motion.div>
+            )}
+        </AnimatePresence>
+
+        <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+                minHeight: '100vh',
+                background: T.bg,
+                padding: '40px 48px',
+                fontFamily: 'var(--font-geist-sans), sans-serif',
+                boxSizing: 'border-box',
+            }}
+            className="bns-page"
+        >
+
             {/* Header */}
             <div style={{ marginBottom: 24 }}>
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 700, color: T.fg, margin: 0 }}>Order Booking</h1>
@@ -969,7 +1107,7 @@ export default function OrdersPage() {
                     onFocus={(e) => e.target.style.borderColor = T.accent}
                     onBlur={(e) => e.target.style.borderColor = T.border}
                 />
-                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 14 }}>
+                <div className="bns-orders-extract" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 14 }}>
                     <AnimatePresence>
                         {extracting && (
                             <motion.div
@@ -1009,7 +1147,7 @@ export default function OrdersPage() {
             </div>
 
             {/* Inventory Holder Empty Inventory Warning */}
-            {profile?.accountType === 'inventory_holder' && products.length === 0 && (
+            {profile?.accountType === 'inventory_holder' && productsLoaded && products.length === 0 && (
                 <div style={{
                     background: '#fffbf0',
                     border: '1px solid #fef3c7',
@@ -1055,7 +1193,7 @@ export default function OrdersPage() {
             )}
 
             {/* Tabs switcher — Positioned right below extract & warning */}
-            <div style={{
+            <div className="bns-orders-tabs" style={{
                 display: 'inline-flex',
                 background: T.card,
                 border: `1px solid ${T.border}`,
@@ -1105,7 +1243,7 @@ export default function OrdersPage() {
 
                     {/* Draft section header with bulk actions */}
                     {draftOrders.length > 0 && (
-                        <div style={{
+                        <div className="bns-orders-draft-bar" style={{
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
@@ -1116,24 +1254,62 @@ export default function OrdersPage() {
                             padding: '10px 16px',
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                <select
-                                    onChange={(e) => handleBulkSelectDraft(e.target.value as any)}
-                                    defaultValue=""
-                                    style={{
-                                        border: `1px solid ${T.border}`,
-                                        borderRadius: '6px',
-                                        padding: '5px 10px',
-                                        fontSize: '0.8rem',
-                                        background: T.bg,
-                                        cursor: 'pointer',
-                                        outline: 'none',
-                                    }}
-                                >
-                                    <option value="" disabled>Select...</option>
-                                    <option value="all">Select All</option>
-                                    <option value="none">Select None</option>
-                                    <option value="valid">Select Valid Only</option>
-                                </select>
+                                <div style={{ position: 'relative' }}>
+                                    <div
+                                        onClick={() => setBulkSelectOpen(prev => !prev)}
+                                        style={{
+                                            border: `1px solid ${T.border}`,
+                                            borderRadius: 10,
+                                            padding: '7px 32px 7px 12px',
+                                            fontSize: '0.82rem',
+                                            color: T.fg,
+                                            background: T.bg,
+                                            cursor: 'pointer',
+                                            userSelect: 'none',
+                                            whiteSpace: 'nowrap',
+                                            position: 'relative',
+                                        }}
+                                    >
+                                        {bulkSelectLabel}
+                                        <ChevronDown size={13} style={{ position: 'absolute', right: 10, top: '50%', transform: bulkSelectOpen ? 'rotate(180deg) translateY(50%)' : 'translateY(-50%)', color: T.muted, transition: 'transform 0.2s' }} />
+                                    </div>
+                                    {bulkSelectOpen && (
+                                        <div className="bns-dropdown" style={{
+                                            position: 'absolute', zIndex: 999,
+                                            top: '100%', left: 0,
+                                            minWidth: 180,
+                                            background: '#fff',
+                                            border: `1px solid ${T.border}`,
+                                            borderRadius: 10,
+                                            boxShadow: '0 8px 28px rgba(0,0,0,0.1)',
+                                            marginTop: 4,
+                                            padding: 4,
+                                        }}>
+                                            {['all', 'none', 'valid'].map((val) => (
+                                                <div
+                                                    key={val}
+                                                    onClick={() => {
+                                                        handleBulkSelectDraft(val as any);
+                                                        setBulkSelectLabel(val === 'all' ? 'Select All' : val === 'none' ? 'Select None' : 'Select Valid Only');
+                                                        setBulkSelectOpen(false);
+                                                    }}
+                                                    style={{
+                                                        padding: '9px 12px',
+                                                        fontSize: '0.82rem',
+                                                        cursor: 'pointer',
+                                                        color: T.fg,
+                                                        borderRadius: 6,
+                                                        transition: 'background 0.1s ease',
+                                                    }}
+                                                    onMouseEnter={e => (e.currentTarget.style.background = T.accentLight)}
+                                                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                                >
+                                                    {val === 'all' ? 'Select All' : val === 'none' ? 'Select None' : 'Select Valid Only'}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
 
                                 <button
                                     onClick={handleSyncCities}
@@ -1240,7 +1416,7 @@ export default function OrdersPage() {
                                         }}
                                     >
                                         {/* Collapsed view header */}
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div className="bns-orders-draft-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, cursor: 'pointer' }} onClick={() => toggleExpand(order.id)}>
                                                 <button
                                                     onClick={(e) => {
@@ -1401,16 +1577,18 @@ export default function OrdersPage() {
                                                         style={{ width: '100%', border: `1px solid ${errBorder('city')}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem', color: T.fg, outline: 'none', boxSizing: 'border-box' }}
                                                     />
                                                     {cityDropdownOpen[order.id] && (
-                                                        <div style={{
+                                                        <div className="bns-dropdown" style={{
                                                             position: 'absolute', zIndex: 999,
                                                             top: '100%', left: 0, right: 0,
+                                                            minWidth: 240,
                                                             background: '#fff',
                                                             border: `1px solid ${T.border}`,
-                                                            borderRadius: 8,
-                                                            boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-                                                            maxHeight: 200,
+                                                            borderRadius: 10,
+                                                            boxShadow: '0 8px 28px rgba(0,0,0,0.1)',
+                                                            maxHeight: 220,
                                                             overflowY: 'auto',
-                                                            marginTop: 2,
+                                                            marginTop: 4,
+                                                            padding: 4,
                                                         }}>
                                                             {filteredCities.length > 0 ? (
                                                                 filteredCities.map((c, idx) => {
@@ -1426,12 +1604,12 @@ export default function OrdersPage() {
                                                                                 fetchRateEstimate(order.id, parseFloat(order.weight || '0') || 0, c.name, selectedCourier[order.id]);
                                                                             }}
                                                                             style={{
-                                                                                padding: '8px 12px',
+                                                                                padding: '9px 12px',
                                                                                 fontSize: '0.82rem',
                                                                                 cursor: 'pointer',
                                                                                 color: T.fg,
                                                                                 background: isActive ? T.accentLight : 'transparent',
-                                                                                borderBottom: `1px solid ${T.border}`,
+                                                                                borderRadius: 6,
                                                                                 transition: 'background 0.1s ease',
                                                                             }}
                                                                             onMouseEnter={e => {
@@ -1477,36 +1655,129 @@ export default function OrdersPage() {
                                                     />
                                                 </div>
 
-                                                {/* Product Catalog select dropdown */}
-                                                {products.length > 0 && (
-                                                    <div style={{ gridColumn: '1 / -1' }}>
-                                                        <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Product (from inventory)</span>
-                                                        <div style={{ position: 'relative' }}>
-                                                            <select
-                                                                value={order.productId || ''}
-                                                                onChange={(e) => handleProductSelect(order.id, e.target.value)}
-                                                                style={{
-                                                                    width: '100%', appearance: 'none',
-                                                                    border: `1px solid ${validationError && !order.productId ? '#dc2626' : T.border}`, borderRadius: 8,
-                                                                    padding: '7px 32px 7px 10px',
-                                                                    fontSize: '0.85rem', color: T.fg,
-                                                                    background: T.bg, cursor: 'pointer', outline: 'none',
-                                                                }}
-                                                            >
-                                                                <option value="">— Select product —</option>
-                                                                {products.map((p) => (
-                                                                    <option key={p.id} value={p.id}>
-                                                                        {p.name} · stock: {p.stockQuantity} · weight: {p.weight} kg
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                            <ChevronDown
-                                                                size={13}
-                                                                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: T.muted, pointerEvents: 'none' }}
-                                                            />
+                                                {/* Product Catalog select dropdown — searchable autocomplete */}
+                                                {products.length > 0 && (() => {
+                                                    const isOpen = !!productDropdownOpen[order.id];
+                                                    const selectedProduct = products.find(p => p.id === order.productId);
+                                                    const searchTerm = (productSearch[order.id] ?? selectedProduct?.name ?? '').toLowerCase();
+                                                    const filteredProducts = isOpen
+                                                        ? products.filter(p =>
+                                                            !searchTerm || p.name.toLowerCase().includes(searchTerm)
+                                                        ).slice(0, 50)
+                                                        : [];
+                                                    return (
+                                                        <div style={{ gridColumn: '1 / -1' }}>
+                                                            <span style={{ fontSize: '0.7rem', color: T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>Product (from inventory)</span>
+                                                            <div style={{ position: 'relative' }}>
+                                                                <input
+                                                                    type="text"
+                                                                    value={isOpen ? (productSearch[order.id] ?? selectedProduct?.name ?? '') : (selectedProduct?.name ?? '')}
+                                                                    autoComplete="off"
+                                                                    placeholder="— Select product —"
+                                                                    onChange={(e) => {
+                                                                        setProductSearch(prev => ({ ...prev, [order.id]: e.target.value }));
+                                                                        setProductDropdownOpen(prev => ({ ...prev, [order.id]: true }));
+                                                                        setActiveProductIndex(prev => ({ ...prev, [order.id]: 0 }));
+                                                                    }}
+                                                                    onFocus={() => {
+                                                                        setProductSearch(prev => ({ ...prev, [order.id]: '' }));
+                                                                        setProductDropdownOpen(prev => ({ ...prev, [order.id]: true }));
+                                                                        setActiveProductIndex(prev => ({ ...prev, [order.id]: 0 }));
+                                                                    }}
+                                                                    onBlur={() => {
+                                                                        setTimeout(() => {
+                                                                            setProductDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                            setProductSearch(prev => ({ ...prev, [order.id]: selectedProduct?.name ?? '' }));
+                                                                        }, 220);
+                                                                    }}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'ArrowDown') {
+                                                                            e.preventDefault();
+                                                                            setActiveProductIndex(prev => ({ ...prev, [order.id]: Math.min((prev[order.id] || 0) + 1, filteredProducts.length - 1) }));
+                                                                        } else if (e.key === 'ArrowUp') {
+                                                                            e.preventDefault();
+                                                                            setActiveProductIndex(prev => ({ ...prev, [order.id]: Math.max((prev[order.id] || 0) - 1, 0) }));
+                                                                        } else if (e.key === 'Enter') {
+                                                                            e.preventDefault();
+                                                                            const idx = activeProductIndex[order.id] || 0;
+                                                                            if (filteredProducts[idx]) {
+                                                                                handleProductSelect(order.id, filteredProducts[idx].id);
+                                                                                setProductSearch(prev => ({ ...prev, [order.id]: filteredProducts[idx].name }));
+                                                                                setProductDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                            }
+                                                                        } else if (e.key === 'Escape') {
+                                                                            setProductDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                            setProductSearch(prev => ({ ...prev, [order.id]: selectedProduct?.name ?? '' }));
+                                                                        }
+                                                                    }}
+                                                                    style={{
+                                                                        width: '100%',
+                                                                        border: `1px solid ${validationError && !order.productId ? '#dc2626' : T.border}`,
+                                                                        borderRadius: 10,
+                                                                        padding: '9px 12px',
+                                                                        fontSize: '0.82rem',
+                                                                        color: T.fg,
+                                                                        background: T.bg,
+                                                                        outline: 'none',
+                                                                        boxSizing: 'border-box',
+                                                                    }}
+                                                                />
+                                                                {isOpen && (
+                                                                    <div className="bns-dropdown" style={{
+                                                                        position: 'absolute', zIndex: 999,
+                                                                        top: '100%', left: 0, right: 0,
+                                                                        minWidth: 240,
+                                                                        background: '#fff',
+                                                                        border: `1px solid ${T.border}`,
+                                                                        borderRadius: 10,
+                                                                        boxShadow: '0 8px 28px rgba(0,0,0,0.1)',
+                                                                        maxHeight: 220,
+                                                                        overflowY: 'auto',
+                                                                        marginTop: 4,
+                                                                        padding: 4,
+                                                                    }}>
+                                                                        {filteredProducts.length > 0 ? (
+                                                                            filteredProducts.map((p, idx) => {
+                                                                                const isActive = (activeProductIndex[order.id] || 0) === idx;
+                                                                                const isSelected = p.id === order.productId;
+                                                                                return (
+                                                                                    <div
+                                                                                        key={p.id}
+                                                                                        onMouseDown={(e) => { e.preventDefault(); }}
+                                                                                        onClick={() => {
+                                                                                            handleProductSelect(order.id, p.id);
+                                                                                            setProductSearch(prev => ({ ...prev, [order.id]: p.name }));
+                                                                                            setProductDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                                        }}
+                                                                                        onMouseEnter={() => setActiveProductIndex(prev => ({ ...prev, [order.id]: idx }))}
+                                                                                        style={{
+                                                                                            padding: '9px 12px',
+                                                                                            fontSize: '0.82rem',
+                                                                                            cursor: 'pointer',
+                                                                                            color: T.fg,
+                                                                                            background: isActive ? T.accentLight : 'transparent',
+                                                                                            borderRadius: 6,
+                                                                                            transition: 'background 0.1s ease',
+                                                                                            display: 'flex',
+                                                                                            justifyContent: 'space-between',
+                                                                                            alignItems: 'center',
+                                                                                            gap: 8,
+                                                                                        }}
+                                                                                    >
+                                                                                        <span>{p.name} · <span style={{ color: T.muted }}>stock: {p.stockQuantity}</span></span>
+                                                                                        <span style={{ fontSize: '0.75rem', color: T.muted, whiteSpace: 'nowrap' }}>{p.weight} kg</span>
+                                                                                    </div>
+                                                                                );
+                                                                            })
+                                                                        ) : (
+                                                                            <div style={{ padding: '9px 12px', fontSize: '0.82rem', color: T.muted }}>No product found</div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                )}
+                                                    );
+                                                })()}
 
                                                 {/* Manual product info when catalog is optional */}
                                                 {!order.productId && (
@@ -1667,88 +1938,90 @@ export default function OrdersPage() {
                                                                     style={{
                                                                         width: '100%',
                                                                         border: `1px solid ${courierErr ? '#dc2626' : T.border}`,
-                                                                        borderRadius: 6,
-                                                                        padding: '6px 10px',
-                                                                        fontSize: '0.8rem',
+                                                                        borderRadius: 10,
+                                                                        padding: '9px 12px',
+                                                                        fontSize: '0.82rem',
                                                                         color: T.fg,
                                                                         background: T.bg,
                                                                         outline: 'none',
                                                                         boxSizing: 'border-box',
                                                                     }}
-                                                                />
-                                                                {courierDropdownOpen[order.id] && (
-                                                                    <div style={{
-                                                                        position: 'absolute', zIndex: 1000,
-                                                                        top: '100%', left: 0, right: 0,
-                                                                        background: '#fff',
-                                                                        border: `1px solid ${T.border}`,
-                                                                        borderRadius: 8,
-                                                                        boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-                                                                        maxHeight: 200,
-                                                                        overflowY: 'auto',
-                                                                        marginTop: 2,
-                                                                    }}>
-                                                                        {syncingCompanies ? (
-                                                                            <div style={{ padding: '10px 12px', fontSize: '0.8rem', color: T.muted, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                                                <Loader2 size={12} className="animate-spin" /> Syncing companies...
-                                                                            </div>
-                                                                        ) : filteredCompanies.length > 0 ? (
-                                                                            filteredCompanies.map((co, idx) => {
-                                                                                const isActive = (activeCourierIndex[order.id] || 0) === idx;
-                                                                                const isSelected = co.code === currentCode;
-                                                                                return (
-                                                                                    <div
-                                                                                        key={co.id}
-                                                                                        onMouseDown={(e) => { e.preventDefault(); }}
-                                                                                        onClick={() => {
-                                                                                            handleCourierChange(order.id, co.code, order.weight || '0', order.city || '');
-                                                                                            setCourierSearch(prev => ({ ...prev, [order.id]: co.name }));
-                                                                                            setCourierDropdownOpen(prev => ({ ...prev, [order.id]: false }));
-                                                                                        }}
-                                                                                        onMouseEnter={() => setActiveCourierIndex(prev => ({ ...prev, [order.id]: idx }))}
-                                                                                        style={{
-                                                                                            padding: '8px 12px',
-                                                                                            fontSize: '0.82rem',
-                                                                                            cursor: 'pointer',
-                                                                                            color: isSelected ? T.accent : T.fg,
-                                                                                            fontWeight: isSelected ? 600 : 400,
-                                                                                            background: isActive ? T.accentLight : 'transparent',
-                                                                                            borderBottom: `1px solid ${T.border}`,
-                                                                                            transition: 'background 0.1s ease',
-                                                                                            display: 'flex',
-                                                                                            justifyContent: 'space-between',
-                                                                                            alignItems: 'center',
-                                                                                        }}
-                                                                                    >
-                                                                                        <span>{co.name || co.code.toUpperCase()}</span>
-                                                                                        {isSelected && <Check size={12} />}
-                                                                                    </div>
-                                                                                );
-                                                                            })
-                                                                        ) : (
-                                                                            <div style={{ padding: '10px 12px', fontSize: '0.8rem', color: T.muted, textAlign: 'center' }}>
-                                                                                <div>No courier companies synchronized.</div>
-                                                                                <button
-                                                                                    onMouseDown={(e) => e.preventDefault()}
-                                                                                    onClick={(e) => { e.stopPropagation(); handleSyncCompanies(); }}
-                                                                                    style={{
-                                                                                        marginTop: 6,
-                                                                                        border: `1px solid ${T.border}`,
-                                                                                        background: T.bg,
-                                                                                        color: T.accent,
-                                                                                        borderRadius: 6,
-                                                                                        padding: '4px 12px',
-                                                                                        fontSize: '0.75rem',
-                                                                                        fontWeight: 600,
-                                                                                        cursor: 'pointer',
-                                                                                    }}
-                                                                                >
-                                                                                    Sync Companies
-                                                                                </button>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                )}
+                                                                 />
+                                                                 {courierDropdownOpen[order.id] && (
+                                                                     <div className="bns-dropdown" style={{
+                                                                         position: 'absolute', zIndex: 1000,
+                                                                         top: '100%', left: 0, right: 0,
+                                                                         minWidth: 240,
+                                                                         background: '#fff',
+                                                                         border: `1px solid ${T.border}`,
+                                                                         borderRadius: 10,
+                                                                         boxShadow: '0 8px 28px rgba(0,0,0,0.1)',
+                                                                         maxHeight: 220,
+                                                                         overflowY: 'auto',
+                                                                         marginTop: 4,
+                                                                         padding: 4,
+                                                                     }}>
+                                                                         {syncingCompanies ? (
+                                                                             <div style={{ padding: '9px 12px', fontSize: '0.82rem', color: T.muted, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                                                 <Loader2 size={12} className="animate-spin" /> Syncing companies...
+                                                                             </div>
+                                                                         ) : filteredCompanies.length > 0 ? (
+                                                                             filteredCompanies.map((co, idx) => {
+                                                                                 const isActive = (activeCourierIndex[order.id] || 0) === idx;
+                                                                                 const isSelected = co.code === currentCode;
+                                                                                 return (
+                                                                                     <div
+                                                                                         key={co.id}
+                                                                                         onMouseDown={(e) => { e.preventDefault(); }}
+                                                                                         onClick={() => {
+                                                                                             handleCourierChange(order.id, co.code, order.weight || '0', order.city || '');
+                                                                                             setCourierSearch(prev => ({ ...prev, [order.id]: co.name }));
+                                                                                             setCourierDropdownOpen(prev => ({ ...prev, [order.id]: false }));
+                                                                                         }}
+                                                                                         onMouseEnter={() => setActiveCourierIndex(prev => ({ ...prev, [order.id]: idx }))}
+                                                                                         style={{
+                                                                                             padding: '9px 12px',
+                                                                                             fontSize: '0.82rem',
+                                                                                             cursor: 'pointer',
+                                                                                             color: isSelected ? T.accent : T.fg,
+                                                                                             fontWeight: isSelected ? 600 : 400,
+                                                                                             background: isActive ? T.accentLight : 'transparent',
+                                                                                             borderRadius: 6,
+                                                                                             transition: 'background 0.1s ease',
+                                                                                             display: 'flex',
+                                                                                             justifyContent: 'space-between',
+                                                                                             alignItems: 'center',
+                                                                                         }}
+                                                                                     >
+                                                                                         <span>{co.name || co.code.toUpperCase()}</span>
+                                                                                         {isSelected && <Check size={12} />}
+                                                                                     </div>
+                                                                                 );
+                                                                             })
+                                                                         ) : (
+                                                                             <div style={{ padding: '9px 12px', fontSize: '0.82rem', color: T.muted, textAlign: 'center' }}>
+                                                                                 <div>No courier companies synchronized.</div>
+                                                                                 <button
+                                                                                     onMouseDown={(e) => e.preventDefault()}
+                                                                                     onClick={(e) => { e.stopPropagation(); handleSyncCompanies(); }}
+                                                                                     style={{
+                                                                                         marginTop: 6,
+                                                                                         border: `1px solid ${T.border}`,
+                                                                                         background: T.bg,
+                                                                                         color: T.accent,
+                                                                                         borderRadius: 6,
+                                                                                         padding: '4px 12px',
+                                                                                         fontSize: '0.75rem',
+                                                                                         fontWeight: 600,
+                                                                                         cursor: 'pointer',
+                                                                                     }}
+                                                                                 >
+                                                                                     Sync Companies
+                                                                                 </button>
+                                                                             </div>
+                                                                         )}
+                                                                     </div>
+                                                                 )}
                                                             </div>
                                                         );
                                                     })()}
@@ -1868,7 +2141,7 @@ export default function OrdersPage() {
                 <div>
                     {/* Bulk actions booked toolbar */}
                     {bookedOrders.length > 0 && (
-                        <div style={{
+                        <div className="bns-orders-bulk-bar" style={{
                             background: T.card,
                             border: `1px solid ${T.border}`,
                             borderRadius: '8px',
@@ -1968,7 +2241,7 @@ export default function OrdersPage() {
                     )}
 
                     {/* Booked orders table */}
-                    <div style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 12, overflow: 'hidden' }}>
+                    <div className="bns-orders-booked-table" style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 12, overflow: 'hidden' }}>
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                                 <thead>
@@ -2095,13 +2368,47 @@ export default function OrdersPage() {
                         </div>
                     </div>
 
-                    {bookedOrders.length === 0 && (
-                        <div style={{ textAlign: 'center', padding: '80px 0', color: T.muted, fontSize: '0.9rem' }}>
-                            No booked shipments yet. Book drafts to see them here.
-                        </div>
-                    )}
+                    {/* Mobile Booked Cards */}
+                    <div className="bns-orders-booked-cards">
+                        {bookedOrders.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '40px 0', color: T.muted, fontSize: '0.9rem' }}>
+                                No booked shipments yet.
+                            </div>
+                        ) : (
+                            bookedOrders.map((o, i) => {
+                                const productObj = products.find((p) => p.id === o.productId);
+                                const displayProduct = productObj?.name ?? o.productInfo ?? '—';
+                                return (
+                                    <div key={o.id} className="bns-order-card">
+                                        <div className="bns-order-card-row">
+                                            <div>
+                                                <div className="bns-order-card-name">{o.customerName || '—'}</div>
+                                                <div className="bns-order-card-meta">
+                                                    <span>📍 {o.city || '—'}</span>
+                                                    <span>📦 {displayProduct}</span>
+                                                    <span>⚖️ {o.weight ? `${o.weight} kg` : '—'}</span>
+                                                    <span>📬 {o.shippingType || '—'}</span>
+                                                </div>
+                                                <div className="bns-order-card-tracking">{o.trackingNumber || '—'}</div>
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div className="bns-order-card-status">Booked</div>
+                                                <div style={{ marginTop: 8 }}>
+                                                    {o.sellingPrice && (
+                                                        <div style={{ fontSize: '0.78rem', color: T.fg, fontWeight: 600 }}>Rs {Number(o.sellingPrice).toLocaleString('en-PK')}</div>
+                                                    )}
+                                                    <div className="bns-order-card-profit">{o.profit ? `Rs ${Number(o.profit).toLocaleString('en-PK')}` : '—'}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
                 </div>
             )}
         </motion.div>
+        </>
     );
 }

@@ -165,11 +165,58 @@ export default function DashboardClient() {
             className="bns-page"
         >
             <style>{`
+                .dash-booked-table { display: block; }
+                .dash-booked-cards { display: none; }
+                .dash-booked-card {
+                    border: 1.5px solid ${T.border};
+                    border-radius: 12px;
+                    padding: 14px 16px;
+                    margin-bottom: 10px;
+                    background: ${T.bg};
+                }
+                .dash-booked-card-row {
+                    display: flex;
+                    align-items: flex-start;
+                    justify-content: space-between;
+                    gap: 8px;
+                }
+                .dash-booked-card-name {
+                    font-size: 0.88rem;
+                    font-weight: 700;
+                    color: ${T.fg};
+                    margin-bottom: 4px;
+                }
+                .dash-booked-card-meta {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 4px 12px;
+                    font-size: 0.76rem;
+                    color: ${T.muted};
+                    margin-bottom: 6px;
+                }
+                .dash-booked-card-meta span { display: flex; align-items: center; gap: 4px; }
+                .dash-booked-card-tracking {
+                    font-size: 0.72rem;
+                    font-family: var(--font-geist-mono);
+                    color: ${T.muted};
+                    background: ${T.card};
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    display: inline-block;
+                }
+                .dash-booked-card-profit {
+                    font-size: 0.82rem;
+                    font-weight: 700;
+                    color: #16a34a;
+                }
+
                 @media (max-width: 768px) {
                     .dash-header-row { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
                     .dash-stat-grid { grid-template-columns: 1fr 1fr !important; gap: 12px !important; }
                     .dash-chart-wrap { height: 180px !important; }
                     .dash-table-scroll { overflow-x: auto !important; }
+                    .dash-booked-table { display: none; }
+                    .dash-booked-cards { display: block; margin-top: 16px; }
                 }
             `}</style>
             
@@ -361,7 +408,7 @@ export default function DashboardClient() {
                             to process shipments.
                         </div>
                     ) : (
-                        <div className="dash-table-scroll" style={{ overflowX: 'auto' }}>
+                        <><div className="dash-booked-table dash-table-scroll" style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
                                 <thead>
                                     <tr
@@ -420,6 +467,26 @@ export default function DashboardClient() {
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Mobile Booked Cards */}
+                        <div className="dash-booked-cards">
+                            {todayOrders.map((o, i) => (
+                                <div key={o.id} className="dash-booked-card">
+                                    <div className="dash-booked-card-row">
+                                        <div>
+                                            <div className="dash-booked-card-name">{o.customerName || '—'}</div>
+                                            <div className="dash-booked-card-meta">
+                                                <span>📍 {o.city || '—'}</span>
+                                                <span>📦 {o.productName}</span>
+                                            </div>
+                                            <div className="dash-booked-card-tracking">{o.trackingNumber || '—'}</div>
+                                        </div>
+                                        <div className="dash-booked-card-profit">Rs {o.profit.toLocaleString('en-PK')}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        </>
                     )}
                 </div>
             </motion.div>

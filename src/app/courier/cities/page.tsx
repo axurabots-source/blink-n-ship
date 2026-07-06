@@ -113,6 +113,50 @@ export default function OperationalCities() {
             }}
             className="bns-page"
         >
+            <style>{`
+                .bns-cities-table { display: block; }
+                .bns-cities-cards { display: none; }
+
+                .bns-city-card {
+                    border: 1.5px solid ${T.border};
+                    border-radius: 12px;
+                    padding: 14px 16px;
+                    margin-bottom: 10px;
+                    background: ${T.bg};
+                    transition: border-color 0.18s;
+                }
+                .bns-city-card-row {
+                    display: flex;
+                    align-items: flex-start;
+                    justify-content: space-between;
+                    gap: 8px;
+                }
+                .bns-city-card-name {
+                    font-size: 0.88rem;
+                    font-weight: 700;
+                    color: ${T.fg};
+                    margin-bottom: 4px;
+                }
+                .bns-city-card-code {
+                    font-size: 0.76rem;
+                    color: ${T.muted};
+                    font-family: var(--font-geist-mono);
+                    margin-bottom: 6px;
+                }
+                .bns-city-card-meta {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px 16px;
+                    font-size: 0.76rem;
+                    color: ${T.muted};
+                }
+                .bns-city-card-meta span { display: flex; align-items: center; gap: 4px; }
+
+                @media (max-width: 768px) {
+                    .bns-cities-table { display: none; }
+                    .bns-cities-cards { display: block; margin-top: 16px; }
+                }
+            `}</style>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }} className="bns-header">
                 <div>
                     <h1 style={{ fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: '6px' }}>Operational Cities</h1>
@@ -151,8 +195,8 @@ export default function OperationalCities() {
             </div>
 
             {/* Filter and stats row */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', gap: '16px' }}>
-                <div style={{ position: 'relative', width: '320px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', gap: '16px' }} className="bns-toolbar">
+                <div style={{ position: 'relative', width: '320px', maxWidth: '100%' }}>
                     <Search size={16} color={T.muted} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                     <input
                         type="text"
@@ -206,7 +250,8 @@ export default function OperationalCities() {
                     No operational cities match your search.
                 </div>
             ) : (
-                <div style={{ border: `1px solid ${T.border}`, borderRadius: '10px', overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <>
+                <div className="bns-cities-table" style={{ border: `1px solid ${T.border}`, borderRadius: '10px', overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
                         <thead>
                             <tr style={{ background: T.card, borderBottom: `1px solid ${T.border}` }}>
@@ -306,6 +351,38 @@ export default function OperationalCities() {
                         </div>
                     )}
                 </div>
+
+                {/* Mobile Cards */}
+                <div className="bns-cities-cards">
+                    {paginated.map((c, idx) => (
+                        <div key={c.id || idx} className="bns-city-card">
+                            <div className="bns-city-card-row">
+                                <div>
+                                    <div className="bns-city-card-name">{c.name}</div>
+                                    <div className="bns-city-card-code">{c.code || '—'}</div>
+                                    <div className="bns-city-card-meta">
+                                        <span>📍 {c.zone || '—'}</span>
+                                        <span>
+                                            <span style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                padding: '2px 8px',
+                                                borderRadius: '12px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 600,
+                                                background: c.isActive ? '#e6f4ea' : '#fce8e6',
+                                                color: c.isActive ? '#137333' : '#c5221f'
+                                            }}>
+                                                {c.isActive ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </>
             )}
         </div>
     );

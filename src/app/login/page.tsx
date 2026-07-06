@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Truck } from 'lucide-react';
+import { Truck, Eye, EyeOff } from 'lucide-react';
 
 // ─── Animated Canvas Background ───────────────────────────────────────────────
 function AnimatedBG() {
@@ -352,6 +352,7 @@ export default function LoginPage() {
     const [isSignup, setIsSignup] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
@@ -461,11 +462,31 @@ export default function LoginPage() {
 
                             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                                 <InputField type="email" placeholder="Email address" value={email} onChange={setEmail} required />
-                                <InputField
-                                    type="password"
-                                    placeholder={isSignup ? 'Password (min. 6 characters)' : 'Password'}
-                                    value={password} onChange={setPassword} required minLength={6}
-                                />
+                                <div style={{ position: 'relative' }}>
+                                    <InputField
+                                        type={showPassword ? 'text' : 'password'}
+                                        placeholder={isSignup ? 'Password (min. 6 characters)' : 'Password'}
+                                        value={password} onChange={setPassword} required minLength={6}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        style={{
+                                            position: 'absolute',
+                                            right: 12,
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: 0,
+                                            display: 'flex',
+                                            color: '#a3a3a3',
+                                        }}
+                                    >
+                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
 
                                 <AnimatePresence>
                                     {error && (

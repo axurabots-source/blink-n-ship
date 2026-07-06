@@ -368,41 +368,25 @@ export default function ProductsPage() {
     });
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-            style={{
-                minHeight: '100vh',
-                background: T.bg,
-                padding: '40px 48px',
-                fontFamily: 'var(--font-geist-sans), sans-serif',
-                boxSizing: 'border-box',
-                position: 'relative',
-            }}
-            className="bns-page"
-        >
-            {/* Custom confirmation top-modal for deletes */}
-            <AnimatePresence>
-                {deletingId && (
+        <>
+        {/* Custom confirmation top-modal for deletes */}
+        <AnimatePresence>
+            {deletingId && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 20, pointerEvents: 'none' }}>
                     <motion.div
                         initial={{ opacity: 0, y: -50 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -50 }}
                         style={{
-                            position: 'fixed',
-                            top: 20,
-                            left: '50%',
-                            transform: 'translateX(-50%)',
                             background: '#ffffff',
                             border: '1px solid #fecaca',
                             borderRadius: '12px',
                             boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
-                            zIndex: 1000,
                             padding: '20px 24px',
                             width: '90%',
                             maxWidth: '440px',
                             boxSizing: 'border-box',
+                            pointerEvents: 'auto',
                         }}
                     >
                         {deleteProgress === null ? (
@@ -439,8 +423,24 @@ export default function ProductsPage() {
                             </div>
                         )}
                     </motion.div>
-                )}
-            </AnimatePresence>
+                </div>
+            )}
+        </AnimatePresence>
+
+        <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+                minHeight: '100vh',
+                background: T.bg,
+                padding: '40px 48px',
+                fontFamily: 'var(--font-geist-sans), sans-serif',
+                boxSizing: 'border-box',
+                position: 'relative',
+            }}
+            className="bns-page"
+        >
 
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, flexWrap: 'wrap', gap: 16 }}>
@@ -817,5 +817,6 @@ export default function ProductsPage() {
                 </div>
             )}
         </motion.div>
+        </>
     );
 }

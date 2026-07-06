@@ -200,12 +200,7 @@ export default function AppSidebar() {
                 {/* Collapsible Courier Group */}
                 <div style={{ display: 'flex', flexDirection: 'column', marginTop: '8px' }}>
                     <button
-                        onClick={() => {
-                            if (!isCourierRoute) {
-                                router.push('/courier');
-                            }
-                            setCourierOpen(!courierOpen);
-                        }}
+                        onClick={() => setCourierOpen(!courierOpen)}
                         style={{
                             display: 'flex',
                             alignItems: 'center',
