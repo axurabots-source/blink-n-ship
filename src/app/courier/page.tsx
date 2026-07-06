@@ -37,6 +37,17 @@ export default function CourierDashboard() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Load from memory cache instantly
+        const cache = (window as any).__BNS_CACHE__;
+        if (cache && cache.courierDashboard) {
+            const cd = cache.courierDashboard;
+            if (cd.stats) setStats(cd.stats);
+            if (cd.recentShipments) setRecentShipments(cd.recentShipments);
+            if (cd.recentErrors) setRecentErrors(cd.recentErrors);
+            if (cd.lastSync) setLastSync(cd.lastSync);
+            setLoading(false);
+        }
+
         fetch('/api/courier/dashboard')
             .then(r => r.json())
             .then(data => {
@@ -44,12 +55,18 @@ export default function CourierDashboard() {
                 if (data.recentShipments) setRecentShipments(data.recentShipments);
                 if (data.recentErrors) setRecentErrors(data.recentErrors);
                 if (data.lastSync) setLastSync(data.lastSync);
-                setLoading(false);
+                
+                // Update cache
+                if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
+                (window as any).__BNS_CACHE__.courierDashboard = data;
             })
-            .catch(() => setLoading(false));
+            .catch(() => {})
+            .finally(() => {
+                setLoading(false);
+            });
     }, []);
 
-    if (loading) {
+    if (loading && !stats) {
         return (
             <div style={{ padding: '40px 48px', fontFamily: 'var(--font-geist-sans), sans-serif' }}>
                 <div style={{ height: '32px', width: '200px', background: T.border, borderRadius: '4px', marginBottom: '24px', animation: 'pulse 1.5s infinite' }} />
@@ -58,9 +75,11 @@ export default function CourierDashboard() {
                         <div key={i} style={{ height: '120px', background: T.card, border: `1px solid ${T.border}`, borderRadius: '12px', animation: 'pulse 1.5s infinite' }} />
                     ))}
                 </div>
+                <style>{`@keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }`}</style>
             </div>
         );
     }
+
 
     return (
         <motion.div
