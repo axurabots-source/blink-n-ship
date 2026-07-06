@@ -111,15 +111,28 @@ export async function POST(request: Request) {
             create: { userId: user.id, defaultProvider: 'flaship' },
         });
 
-        // Trigger automatic database synchronization for master data
-        let syncOutcome = { success: false, totalSynced: 0, totalSkipped: 0 };
+        // Trigger automatic database synchronization for master data.
+        // On reconnect, the data is already in the DB — skip the expensive full sync.
+        // Only run it on first-time connection (no companies in DB yet).
+        let syncOutcome = { success: true, totalSynced: 0, totalSkipped: 0 };
         try {
-            syncOutcome = await syncCourierData(user.id, ['companies', 'pickup_locations', 'cities', 'rate_cards']);
+            const existingCompanyCount = await prisma.courierCompany.count({
+                where: { userId: user.id, provider: 'flaship' },
+            });
+
+            if (existingCompanyCount === 0) {
+                // First-time connection: sync everything from Flaship
+                syncOutcome = await syncCourierData(user.id, ['companies', 'pickup_locations', 'cities', 'rate_cards']);
+            } else {
+                // Reconnect: data already exists, skip the full sync to avoid delays
+                console.log('[Connect] Skipping sync — data already exists in DB (reconnect scenario).');
+            }
         } catch (syncErr: any) {
             console.error('[Connect Sync] Auto-sync failed:', syncErr.message);
         }
 
-        await logActivity(user.id, 'connect', `Connected to Flaship successfully and auto-synced data (${syncOutcome.totalSynced} records synced)`, null, null, { accountName: accountData.businessName });
+        await logActivity(user.id, 'connect', `Connected to Flaship successfully. Sync: ${syncOutcome.totalSynced > 0 ? `${syncOutcome.totalSynced} records synced` : 'skipped (data already present)'}`, null, null, { accountName: accountData.businessName });
+
 
         return NextResponse.json({
             success: true,
