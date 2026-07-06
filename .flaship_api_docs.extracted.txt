@@ -1,0 +1,707 @@
+Flaship API Documentation
+
+        Flaship
+
+                  API Documentation
+
+                   Developer Integration Guide
+                         Generated for: BinGhani
+
+                            Version 1.1 | Generated on June 27, 2026
+Comprehensive API reference for seamless integration with Flaship's courier
+
+                                       services platform
+
+© Flaship - partners.flaship.pk  Page 1
+Flaship API Documentation
+
+Table of Contents
+
+Authentication                           3
+
+Important Notes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 3
+
+API Reference                            4
+
+1. Couriers, Rates & Cities [GET] . . . . . . . . . . . . . . . . . . . . . . 4
+
+2. System Statuses [GET] . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+
+3. Pickup Locations [GET] . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+
+4. Create Pickup Location [POST] . . . . . . . . . . . . . . . . . . . . . . 7
+
+5. Rate Card [GET] . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+
+6. Create Booking [POST] . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+
+7. Bulk Booking [POST] . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+
+8. List Orders [GET] . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+
+9. Order Detail [GET] . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+
+10. Track Order [GET] . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+
+11. Cancel Order [POST] . . . . . . . . . . . . . . . . . . . . . . . . . 14
+
+12. Loadsheet Eligible Orders [GET] . . . . . . . . . . . . . . . . . . . . 16
+
+13. Generate Loadsheet [POST] . . . . . . . . . . . . . . . . . . . . . . 17
+
+14. Generate Label [POST] . . . . . . . . . . . . . . . . . . . . . . . . 18
+
+© Flaship - partners.flaship.pk  Page 2
+Flaship API Documentation
+
+Authentication
+
+All API endpoints require authentication using the X-API-KEY header with your
+unique API key.
+
+Header Name                      Value                Required
+X-API-KEY                        Your unique API key  Yes
+Content-Type                     application/json     Yes (for POST)
+
+Important Notes
+
+ v Security: Keep your API key secure and never expose it in client-side code or
+
+            public repositories.
+
+ q Content-Type: All POST requests must include Content-Type: application/json
+
+            header.
+
+ s Rate Limiting: Maximum 100 requests per minute per API key.
+  Validation: Always validate response status before processing the data.
+ s Support: For support, contact: support@flaship.pk
+
+© Flaship - partners.flaship.pk  Page 3
+Flaship API Documentation
+
+ API Reference
+
+ Endpoints are listed in the recommended integration order.
+
+ 1. Couriers, Rates & Cities [GET]
+
+ Fetch pickup addresses, assigned courier companies, rate cards (service types),
+ and operational cities for booking.
+
+ Endpoint:
+
+      https://partners.flaship.pk/mr/company_list/
+
+ Ways to Call:
+
+       1. Minimal:
+       GET https://partners.flaship.pk/mr/company_list/
+       Headers: X-API-KEY: your_api_key
+
+ Sample Response:
+
+© Flaship - partners.flaship.pk  Page 4
+Flaship API Documentation
+
+       {
+           "success": true,
+           "pickupAddress": [
+               {
+                  "id": 17,
+                  "address": "Colony Road, Near 123 High School"
+               },
+               {
+                  "id": 102,
+                  "address": "123 Main Street, Block A Warehouse"
+               }
+           ],
+           "companies": ["TCS", "Leopard", "Trax", "MNP"],
+           "rateCards": {
+               "Leopard": ["overnight", "detain", "overland"],
+               "TCS": ["overnight", "overland"]
+           },
+           "operatioons_cities": {
+               "Leopard_all": ["Lahore", "Karachi", ...],
+               "MNP_all": ["Pir Mahal", "Nankana Sahib", ...]
+           }
+
+       }
+
+2. System Statuses [GET]
+
+Fetch integration order statuses and courier service types. Use
+order_statuses.all when filtering List Orders.
+
+Endpoint:
+
+    https://partners.flaship.pk/mr/api/statuses/
+
+Ways to Call:
+
+     1. Minimal:
+     GET https://partners.flaship.pk/mr/api/statuses/
+     Headers: X-API-KEY: your_api_key
+
+© Flaship - partners.flaship.pk  Page 5
+Flaship API Documentation
+
+ Sample Response:
+
+       {
+           "success": true,
+           "order_statuses": {
+               "all": [
+                  "Booked",
+                  "Delivered",
+                  "Cancelled",
+                  "In Transit",
+                  "Out for Delivery",
+                  "Picked up",
+                  "Return Received",
+                  "Shipper Advise",
+                  "Return in Transit"
+               ]
+           },
+           "service_types": ["overnight", "detain", "overland"]
+
+       }
+
+3. Pickup Locations [GET]
+
+List all pickup locations registered on your account.
+
+Endpoint:
+
+    https://partners.flaship.pk/mr/api/pickup-locations/
+
+Ways to Call:
+
+     1. Minimal:
+     GET https://partners.flaship.pk/mr/api/pickup-locations/
+     Headers: X-API-KEY: your_api_key
+
+Sample Response:
+
+© Flaship - partners.flaship.pk  Page 6
+Flaship API Documentation
+
+       {
+           "success": true,
+           "pickup_locations": [{"id": 17, "address": "...", "is_default": true}],
+           "user_companies": ["Leopard", "TCS"]
+
+       }
+
+4. Create Pickup Location [POST]
+
+Create a new pickup location for your account and sync it with assigned courier
+companies.
+
+Endpoint:
+
+    https://partners.flaship.pk/mr/api/create_pickuplocation
+
+Request Parameters:
+
+Parameter                        Type    Required     Description
+pickupAddress                    string
+city                             string  Yes          Complete pickup address
+shipperPhone                     string
+shipperName                      string  Yes          City name for pickup location
+
+                                         Yes          Pickup contact phone
+
+                                         Yes          Pickup contact person name
+
+Sample Request:
+
+     {
+         "pickupAddress": "Plot 91, Ahmad Street, Khayaban Colony #1",
+         "city": "Faisalabad",
+         "shipperPhone": "03001234567",
+         "shipperName": "W. Mustafa"
+
+     }
+
+Sample Response:
+
+© Flaship - partners.flaship.pk               Page 7
+Flaship API Documentation
+
+       {
+           "success": true,
+           "companies": ["Leopard", "TCS", "Trax"]
+
+       }
+
+5. Rate Card [GET]
+
+Get rate cards with charges per courier company and service type.
+
+Endpoint:
+
+    https://partners.flaship.pk/mr/api/rate-card/
+
+Ways to Call:
+
+     1. Minimal:
+     GET https://partners.flaship.pk/mr/api/rate-card/
+     Headers: X-API-KEY: your_api_key
+
+Sample Response:
+
+     {
+         "success": true,
+         "companies": [
+            {
+                "company_name": "Leopard",
+                "rate_cards": [
+                    {"service_type": "overnight", "charges": 150, "weight_from": 0, "weight_to":
+                ]
+            }
+         ]
+
+     }
+
+6. Create Booking [POST]
+
+© Flaship - partners.flaship.pk  Page 8
+Flaship API Documentation
+ Create a new packet booking with specified courier company.
+ Endpoint:
+
+      https://partners.flaship.pk/mr/api/packet_booking
+
+Request Parameters:
+
+Parameter                        Type    Required     Description
+
+consigneeName                    string  Yes          Recipient name
+
+consigneePhone1 string                   Yes          Primary phone number
+
+consigneeAddress string                  Yes          Delivery address
+
+destinationCity                  string  Yes          Delivery city name
+
+codAmount                        string  Yes          Cash on delivery amount
+
+productName                      string  Yes          Product description
+
+productWeight                    string  Yes          Weight in KG
+
+productPieces                    string  Yes          Number of pieces
+
+courierCompany                   string  Yes          Courier name (e.g., Leopard, TCS)
+
+courierOption                    string  Yes          Service type (overnight/overland/deta
+
+                                                      in)
+
+pickuplocation                   string  Yes          Pickup location ID
+
+Sample Request:
+
+© Flaship - partners.flaship.pk               Page 9
+Flaship API Documentation
+
+       {
+           "consigneeName": "John Doe",
+           "consigneePhone1": "03001234567",
+           "consigneePhone2": "",
+           "consigneeAddress": "123 Main Street, Block A",
+           "destinationCity": "Karachi",
+           "codAmount": "2500",
+           "productName": "Electronics - Mobile Phone",
+           "productWeight": "0.5",
+           "productPieces": "1",
+           "courierCompany": "Leopard",
+           "courierOption": "overnight",
+           "pickuplocation": "10",
+           "specialInstructions": "Handle with care",
+           "externalref": ""
+
+       }
+
+ Sample Response:
+
+       {
+           "success": true,
+           "orderNo": 12345,
+           "trackingId": "FLP123456789"
+
+       }
+
+7. Bulk Booking [POST]
+
+Upload a CSV file to create multiple bookings. Rows without Shipment type are
+skipped.
+
+Endpoint:
+
+    https://partners.flaship.pk/mr/api/bulk/booking/
+
+Request Parameters:
+
+© Flaship - partners.flaship.pk  Page 10
+Flaship API Documentation
+
+Parameter                        Type    Required      Description
+
+courierCompany                   string  Yes           Courier company name
+pickuplocation                   string
+                                         Yes           Pickup location ID
+
+file                             file    Yes           CSV file (multipart/form-data)
+
+Ways to Call:
+
+     1. cURL multipart:
+     curl -X POST .../mr/api/bulk/booking/ -H "X-API-KEY: ..." \
+
+         -F courierCompany=Leopard -F pickuplocation=17 -F file=@orders.csv
+     2. Postman: Body > form-data (courierCompany, pickuplocation, file)
+
+Sample Response:
+
+     {
+         "success": { "...": "courier bulk booking response" },
+         "error": [
+            { "row_number": 3, "error": "Invalid destination City" }
+         ]
+
+     }
+
+8. List Orders [GET]
+
+List and filter your orders with pagination. Use type=download to export all
+matching orders.
+
+Endpoint:
+
+    https://partners.flaship.pk/mr/api/orders/
+
+Request Parameters:
+
+© Flaship - partners.flaship.pk               Page 11
+Flaship API Documentation
+
+Parameter                        Type     Required     Description
+page
+                                 integer  No           Page number (default 1, 100 per
+company                                                page)
+status
+startDate                        string   No           Filter by courier company
+endDate                                                Filter by order status
+search                           string   No
+
+type                             string   No           Start date YYYY-MM-DD
+                                                       End date YYYY-MM-DD
+                                 string   No
+
+                                 string   No           Search CN, reference, shipper,
+                                                       consignee
+
+                                 string   No           Set to download for full export
+
+Ways to Call:
+
+     1. Minimal: GET .../mr/api/orders/
+     2. Paginated: ?page=2
+     3. By status: ?status=Booked
+     4. By courier: ?company=Leopard
+     5. By dates: ?startDate=2026-01-01&endDate=2026-05-19
+     6. Search: ?search=FLP123
+     7. All filters: ?page=1&company=Leopard&status=Booked&startDate=...&search=FLP
+     8. Export: ?type=download&startDate=...&endDate=...&status=Delivered
+     Headers: X-API-KEY: your_api_key
+
+Sample Response:
+
+     {
+         "success": true,
+         "orders": [...],
+         "total_pages": 5,
+         "current_page": 1,
+         "stats_count": [{"order_status": "Booked", "count": 42}]
+
+     }
+
+9. Order Detail [GET]
+
+© Flaship - partners.flaship.pk               Page 12
+Flaship API Documentation
+ Get full details for a single order by tracking number (CN).
+ Endpoint:
+
+      https://partners.flaship.pk/mr/api/orders/{tracking_number}/
+
+Request Parameters:
+
+Parameter                        Type    Required      Description
+
+tracking_number                  string  Yes           Tracking number in URL path
+
+Ways to Call:
+
+     1. By tracking number:
+     GET https://partners.flaship.pk/mr/api/orders/FLP123456789/
+     Headers: X-API-KEY: your_api_key
+
+Sample Response:
+
+     {
+         "success": true,
+         "order": {
+            "packet_id": 12345,
+            "tracking_number": "FLP123456789",
+            "order_status": "Booked",
+            "company": "Leopard",
+            "cod_amount": 2500,
+            "payment_status": "initiated"
+         }
+
+     }
+
+10. Track Order [GET]
+
+Track the status of your shipment using tracking number.
+
+© Flaship - partners.flaship.pk               Page 13
+Flaship API Documentation
+
+ Endpoint:
+
+      https://partners.flaship.pk/mr/api/order_tracking/{tracking_
+      number}/
+
+Request Parameters:
+
+Parameter                        Type    Required      Description
+
+tracking_number                  string  Yes           The tracking number of the order
+
+                                                       (URL parameter)
+
+Ways to Call:
+
+     1. By CN in URL path:
+     GET https://partners.flaship.pk/mr/api/order_tracking/FLP123456789/
+     Headers: X-API-KEY: your_api_key
+
+Sample Response:
+
+     {
+         "status": true,
+         "tracking": [
+            {"status": "In Transit", "time": "2026-06-10T14:30:00"},
+            {"status": "Picked Up", "time": "2026-06-09T10:00:00"}
+         ],
+         "order_status": "In Transit"
+
+     }
+
+     OR (Error - HTTP 404):
+
+     {
+         "status": false,
+         "error": "Order not found. Use the tracking number (CN), not the internal order ID.
+
+     }
+
+11. Cancel Order [POST]
+
+© Flaship - partners.flaship.pk               Page 14
+Flaship API Documentation
+
+ Cancel a booked order before it is picked up. Send the tracking number in the
+ request body as JSON.
+
+ Endpoint:
+
+      https://partners.flaship.pk/mr/api/cancel_order/
+
+Request Parameters:
+
+Parameter                        Type    Required      Description
+cn                               string
+                                         Yes           The tracking number to cancel
+
+Sample Request:
+
+     {
+         "cn": "FLP123456789"
+
+     }
+
+Sample Response:
+
+© Flaship - partners.flaship.pk               Page 15
+Flaship API Documentation
+
+       {
+           "status": true,
+           "message": "Order cancelled"
+
+       }
+
+       OR (Already Cancelled):
+
+       {
+           "status": true,
+           "message": "Order already cancelled"
+
+       }
+
+       OR (Error - Order not found):
+
+       {
+           "status": false,
+           "message": "Order not found"
+
+       }
+
+       OR (Error - Missing parameter):
+
+       {
+           "status": false,
+           "message": "cn is required"
+
+       }
+
+       OR (Error - Invalid JSON):
+
+       {
+           "status": false,
+           "message": "Invalid JSON"
+
+       }
+
+12. Loadsheet Eligible Orders [GET]
+
+List booked orders without a loadsheet, ready for loadsheet generation.
+Endpoint:
+
+© Flaship - partners.flaship.pk  Page 16
+Flaship API Documentation
+
+      https://partners.flaship.pk/mr/api/loadsheet/eligible-orders
+      /
+
+Request Parameters:
+
+Parameter                        Type    Required     Description
+company_name                     string
+startDate                        string  No           Filter by courier
+endDate                          string
+search                           string  No           Start date (default: 10 days ago)
+
+                                         No           End date (default: today)
+
+                                         No           Search CN, phone, or consignee
+
+                                                      name
+
+Ways to Call:
+
+     1. Minimal (last 10 days): GET .../eligible-orders/
+     2. By courier: ?company_name=Leopard
+     3. By dates: ?startDate=2026-05-01&endDate=2026-05-19
+     4. Search: ?search=03001234567
+     5. All filters: ?company_name=Leopard&startDate=...&search=FLP
+     Headers: X-API-KEY: your_api_key
+
+Sample Response:
+
+     {
+         "success": true,
+         "orders": [
+            {"tracking_number": "FLP123456789", "order_status": "Booked", "cod_amount": 2500}
+         ]
+
+     }
+
+13. Generate Loadsheet [POST]
+
+Generate loadsheet PDF for specific orders.
+
+© Flaship - partners.flaship.pk              Page 17
+Flaship API Documentation
+ Endpoint:
+
+      https://partners.flaship.pk/mr/api/loadsheet/
+
+Request Parameters:
+
+Parameter                        Type   Required      Description
+cns                              array
+                                        Yes           Array of tracking numbers to include
+
+Ways to Call:
+
+     1. By tracking numbers:
+     POST https://partners.flaship.pk/mr/api/loadsheet/
+     {"cns": ["FLP123456789", "FLP987654321"]}
+
+     Tip: GET /mr/api/loadsheet/eligible-orders/ first
+
+Sample Response:
+
+     {
+         "success": true,
+         "url": "/media/merchant/loadsheets/123/5234.pdf",
+         "loadsheet_id": 5234,
+         "generated_count": 18,
+         "skipped_orders": []
+
+     }
+
+14. Generate Label [POST]
+
+Generate shipping labels for booked orders. Either cns or loadsheet_id must be
+provided.
+
+Endpoint:
+
+    https://partners.flaship.pk/mr/generate_label
+
+© Flaship - partners.flaship.pk              Page 18
+Flaship API Documentation
+
+Request Parameters:
+
+Parameter                        Type     Required       Description
+cns
+loadsheet_id                     array    Yes*           Array of tracking numbers
+
+                                 integer  Yes*           Loadsheet ID (alternative to cns)
+
+Ways to Call:
+
+     1. By tracking numbers (body JSON):
+     POST https://partners.flaship.pk/mr/generate_label
+     {"cns": ["FLP123456789", "FLP987654321"]}
+
+     2. By loadsheet ID:
+     POST https://partners.flaship.pk/mr/generate_label
+     {"loadsheet_id": 5234}
+
+Sample Response:
+
+     HTTP/1.1 200 OK
+     Content-Type: application/pdf
+     Content-Disposition: attachment; filename="label.pdf"
+
+     [Binary PDF Data]
+
+     OR (if no orders found):
+
+     {
+         "success": false,
+         "reason": "No order found for this url"
+
+     }
+
+© Flaship - partners.flaship.pk                 Page 19
+
