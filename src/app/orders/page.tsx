@@ -137,10 +137,20 @@ export default function OrdersPage() {
     const [courierCompanies, setCourierCompanies] = useState<{ id: string; name: string; code: string }[]>([]);
 
     useEffect(() => {
+        // Hydrate state from memory cache instantly
+        const cache = (window as any).__BNS_CACHE__;
+        if (cache) {
+            if (cache.orders) setOrders(cache.orders);
+            if (cache.profile) setProfile(cache.profile);
+            if (cache.products) setProducts(cache.products);
+            if (cache.dbCities) setDbCities(cache.dbCities);
+            if (cache.courierCompanies) setCourierCompanies(cache.courierCompanies);
+        }
+
         async function init() {
             await refresh();
-            loadProducts();
-            loadCourierMeta();
+            await loadProducts();
+            await loadCourierMeta();
         }
         init();
     }, []);
@@ -171,14 +181,23 @@ export default function OrdersPage() {
                 fetch('/api/courier/cities'),
                 fetch('/api/courier/companies'),
             ]);
+            let fetchedCities = [];
+            let fetchedCompanies = [];
             if (citiesRes.ok) {
                 const body = await citiesRes.json();
-                setDbCities(body.cities || []);
+                fetchedCities = body.cities || [];
+                setDbCities(fetchedCities);
             }
             if (companiesRes.ok) {
                 const body = await companiesRes.json();
-                setCourierCompanies(body.companies || []);
+                fetchedCompanies = body.companies || [];
+                setCourierCompanies(fetchedCompanies);
             }
+
+            // Update cache
+            if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
+            (window as any).__BNS_CACHE__.dbCities = fetchedCities;
+            (window as any).__BNS_CACHE__.courierCompanies = fetchedCompanies;
         } catch {
             // courier not connected — silently ignore
         }
@@ -195,6 +214,7 @@ export default function OrdersPage() {
             }
             const body = await res.json();
             setDbCities(body.cities || []);
+            if ((window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__.dbCities = body.cities || [];
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -213,6 +233,7 @@ export default function OrdersPage() {
             }
             const body = await res.json();
             setCourierCompanies(body.companies || []);
+            if ((window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__.courierCompanies = body.companies || [];
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -224,8 +245,15 @@ export default function OrdersPage() {
         try {
             const res = await fetch('/api/orders');
             const body = await res.json();
-            setOrders(body.orders || []);
-            if (body.profile) setProfile(body.profile);
+            const fetchedOrders = body.orders || [];
+            setOrders(fetchedOrders);
+            if (body.profile) {
+                setProfile(body.profile);
+            }
+            // Update cache
+            if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
+            (window as any).__BNS_CACHE__.orders = fetchedOrders;
+            if (body.profile) (window as any).__BNS_CACHE__.profile = body.profile;
         } catch (err: any) {
             setError(err.message);
         }
@@ -234,8 +262,13 @@ export default function OrdersPage() {
     async function loadProducts() {
         const res = await fetch('/api/products');
         const body = await res.json();
-        setProducts(body.products || []);
+        const fetchedProducts = body.products || [];
+        setProducts(fetchedProducts);
+        // Update cache
+        if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
+        (window as any).__BNS_CACHE__.products = fetchedProducts;
     }
+
 
     async function handleExtract() {
         if (!rawText.trim()) return;

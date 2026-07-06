@@ -1,13 +1,14 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
     ShoppingBag,
     CheckCircle,
-    Boxes,
     TrendingUp,
     DollarSign,
     PackageCheck,
+    RefreshCw,
 } from 'lucide-react';
 import Link from 'next/link';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
@@ -47,7 +48,6 @@ const fadeUp = {
     }),
 };
 
-// Custom recharts tooltip matching minimalist design
 const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
         return (
@@ -74,29 +74,69 @@ const CustomTooltip = ({ active, payload }: any) => {
     return null;
 };
 
-export default function DashboardClient({
-    businessName,
-    accountType,
-    stats,
-    graphData,
-    todayOrders,
-}: {
-    businessName: string | null;
-    accountType: string | null;
-    stats: {
-        totalOrders: number;
-        bookedToday: number;
-        totalRevenue: number;
-        totalProfit: number;
-        ledgerBalance?: number;
-        totalBooked?: number;
-        inTransit?: number;
-        delivered?: number;
-        returned?: number;
-    };
-    graphData: GraphDataPoint[];
-    todayOrders: TodayOrder[];
-}) {
+export default function DashboardClient() {
+    const [data, setData] = useState<{
+        businessName: string | null;
+        accountType: string | null;
+        stats: any;
+        graphData: GraphDataPoint[];
+        todayOrders: TodayOrder[];
+    } | null>(null);
+
+    const [loading, setLoading] = useState(true);
+
+    // Load from memory cache on mount to render instantly
+    useEffect(() => {
+        const globalCache = (window as any).__BNS_CACHE__?.dashboard;
+        if (globalCache) {
+            setData(globalCache);
+            setLoading(false);
+        }
+
+        async function fetchDashboard() {
+            try {
+                const res = await fetch('/api/dashboard');
+                if (res.ok) {
+                    const json = await res.json();
+                    const payload = {
+                        businessName: json.businessName,
+                        accountType: json.accountType,
+                        stats: json.stats,
+                        graphData: json.graphData,
+                        todayOrders: json.todayOrders,
+                    };
+                    setData(payload);
+                    // Update cache
+                    if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
+                    (window as any).__BNS_CACHE__.dashboard = payload;
+                }
+            } catch (e) {
+                console.error('Failed to load dashboard:', e);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        fetchDashboard();
+    }, []);
+
+    if (loading && !data) {
+        // Premium minimalist skeleton loader instead of blank page/heavy spinners
+        return (
+            <div style={{ padding: '40px 48px', minHeight: '100vh', background: T.bg, fontFamily: 'var(--font-geist-sans), sans-serif' }}>
+                <div style={{ width: '180px', height: '24px', backgroundColor: '#f3f4f6', borderRadius: '4px', marginBottom: '8px', animation: 'pulse 1.5s infinite' }} />
+                <div style={{ width: '280px', height: '14px', backgroundColor: '#f3f4f6', borderRadius: '4px', marginBottom: '40px', animation: 'pulse 1.5s infinite' }} />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                        <div key={i} style={{ height: '110px', backgroundColor: '#f9fafb', border: `1px solid ${T.border}`, borderRadius: '12px', padding: '24px', animation: 'pulse 1.5s infinite' }} />
+                    ))}
+                </div>
+                <style>{`@keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }`}</style>
+            </div>
+        );
+    }
+
+    const { businessName, accountType, stats, graphData, todayOrders } = data!;
     const accountLabel = accountType === 'inventory_holder' ? 'Inventory Holder' : 'Reseller';
 
     const statList = [
@@ -132,6 +172,7 @@ export default function DashboardClient({
                     .dash-table-scroll { overflow-x: auto !important; }
                 }
             `}</style>
+            
             {/* Header */}
             <motion.div
                 initial={{ opacity: 0, y: -12 }}
@@ -163,7 +204,7 @@ export default function DashboardClient({
                 </p>
             </motion.div>
 
-            {/* Stat cards: 2x2 grid on desktop, 2col on mobile */}
+            {/* Stat cards */}
             <div
                 className="dash-stat-grid"
                 style={{

@@ -32,18 +32,33 @@ export default function ShipmentsPage() {
     const [generatingLabel, setGeneratingLabel] = useState(false);
     const [error, setError] = useState('');
 
-    useEffect(() => { fetchOrders(); }, []);
+    useEffect(() => {
+        // Load from memory cache instantly
+        const cache = (window as any).__BNS_CACHE__;
+        if (cache && cache.shipments) {
+            setOrders(cache.shipments);
+            setLoading(false);
+        }
+        fetchOrders();
+    }, []);
 
     async function fetchOrders() {
-        setLoading(true);
         try {
             const res = await fetch('/api/orders');
             const body = await res.json();
             const booked = (body.orders || []).filter((o: any) => o.status === 'booked');
             setOrders(booked);
-        } catch (err: any) { setError(err.message); }
-        finally { setLoading(false); }
+
+            // Update cache
+            if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
+            (window as any).__BNS_CACHE__.shipments = booked;
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
     }
+
 
     function toggleSelect(id: string) {
         setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
