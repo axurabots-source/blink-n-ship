@@ -8,30 +8,41 @@ export async function GET() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-        const totalBooked = await prisma.shipment.count({ where: { userId: user.id } });
-        const pending = await prisma.shipment.count({ where: { userId: user.id, status: 'booked' } });
-        const inTransit = await prisma.shipment.count({ where: { userId: user.id, status: 'in_transit' } });
-        const delivered = await prisma.shipment.count({ where: { userId: user.id, status: 'delivered' } });
-        const returned = await prisma.shipment.count({ where: { userId: user.id, status: 'returned' } });
-        const cancelled = await prisma.shipment.count({ where: { userId: user.id, status: 'cancelled' } });
-        const failed = await prisma.shipment.count({ where: { userId: user.id, status: 'failed' } });
+        const [
+            totalBooked,
+            pending,
+            inTransit,
+            delivered,
+            returned,
+            cancelled,
+            failed,
+            recentShipments,
+            recentErrors,
+            lastSync,
+        ] = await Promise.all([
+            prisma.shipment.count({ where: { userId: user.id } }),
+            prisma.shipment.count({ where: { userId: user.id, status: 'booked' } }),
+            prisma.shipment.count({ where: { userId: user.id, status: 'in_transit' } }),
+            prisma.shipment.count({ where: { userId: user.id, status: 'delivered' } }),
+            prisma.shipment.count({ where: { userId: user.id, status: 'returned' } }),
+            prisma.shipment.count({ where: { userId: user.id, status: 'cancelled' } }),
+            prisma.shipment.count({ where: { userId: user.id, status: 'failed' } }),
+            prisma.shipment.findMany({
+                where: { userId: user.id },
+                orderBy: { createdAt: 'desc' },
+                take: 10,
+            }),
+            prisma.apiLog.findMany({
+                where: { userId: user.id, isSuccess: false },
+                orderBy: { calledAt: 'desc' },
+                take: 5,
+            }),
+            prisma.syncLog.findFirst({
+                where: { userId: user.id },
+                orderBy: { startedAt: 'desc' },
+            }),
+        ]);
 
-        const recentShipments = await prisma.shipment.findMany({
-            where: { userId: user.id },
-            orderBy: { createdAt: 'desc' },
-            take: 10,
-        });
-
-        const recentErrors = await prisma.apiLog.findMany({
-            where: { userId: user.id, isSuccess: false },
-            orderBy: { calledAt: 'desc' },
-            take: 5,
-        });
-
-        const lastSync = await prisma.syncLog.findFirst({
-            where: { userId: user.id },
-            orderBy: { startedAt: 'desc' },
-        });
 
         return NextResponse.json({
             stats: { totalBooked, pending, inTransit, delivered, returned, cancelled, failed },
