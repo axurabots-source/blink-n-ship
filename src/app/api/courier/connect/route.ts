@@ -2,15 +2,9 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { encrypt } from '@/lib/crypto';
-import {
-    verifyAndFetchAccount,
-    fetchPickupLocations,
-    fetchCourierCompanies,
-    fetchServiceTypes,
-    fetchOperationalCities,
-    fetchRateCards,
-} from '@/lib/flaship';
+import { verifyAndFetchAccount } from '@/lib/flaship';
 import { logActivity } from '@/lib/courierHelpers';
+import { syncCourierData } from '@/lib/sync-service';
 
 export async function POST(request: Request) {
     try {
@@ -117,17 +111,25 @@ export async function POST(request: Request) {
             create: { userId: user.id, defaultProvider: 'flaship' },
         });
 
-        await logActivity(user.id, 'connect', 'Connected to Flaship successfully', null, null, { accountName: accountData.businessName });
+        // Trigger automatic database synchronization for master data
+        let syncOutcome = { success: false, totalSynced: 0, totalSkipped: 0 };
+        try {
+            syncOutcome = await syncCourierData(user.id, ['companies', 'pickup_locations', 'cities', 'rate_cards']);
+        } catch (syncErr: any) {
+            console.error('[Connect Sync] Auto-sync failed:', syncErr.message);
+        }
+
+        await logActivity(user.id, 'connect', `Connected to Flaship successfully and auto-synced data (${syncOutcome.totalSynced} records synced)`, null, null, { accountName: accountData.businessName });
 
         return NextResponse.json({
             success: true,
             account: accountData,
             synced: {
-                locations: true,
-                companies: false, // will auto-sync on load
-                services: false,
-                cities: false,    // will auto-sync on load
-                rates: false,
+                locations: syncOutcome.success,
+                companies: syncOutcome.success,
+                services: syncOutcome.success,
+                cities: syncOutcome.success,
+                rates: syncOutcome.success,
             },
         });
     } catch (err: any) {

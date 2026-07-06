@@ -18,8 +18,8 @@ export async function GET(request: Request) {
             return NextResponse.json({ shippingCost: null, serviceOptions: [] });
         }
 
-        // Auto-determine service type based on weight
-        const option = weight > 3 ? 'overland' : weight > 1 ? 'detain' : 'overnight';
+        // Auto-determine service type label (for reference / suggestion only — NOT used as a DB filter)
+        const suggested = weight > 3 ? 'overland' : weight > 1 ? 'detain' : 'overnight';
 
         // Look up the destination city zone from our synced OperationalCity table
         const destCity = await prisma.operationalCity.findFirst({
@@ -34,20 +34,31 @@ export async function GET(request: Request) {
 
         const destZone = destCity?.zone || null;
 
-        // Fetch rate cards matching this company, zone, and weight-based service type
-        const baseWhere: any = {
-            userId: user.id,
-            serviceType: { contains: option, mode: 'insensitive' }
-        };
+        // Fetch ALL rate cards for this merchant — let weight slab do the matching.
+        // Do NOT filter by serviceType: the stored values come straight from Flaship and
+        // may not match the suggested label (e.g. Flaship stores "OVL" not "overland").
+        const baseWhere: any = { userId: user.id };
         if (company) baseWhere.companyCode = { contains: company, mode: 'insensitive' };
         if (destZone) baseWhere.destinationZone = destZone;
 
         const cards = await prisma.rateCard.findMany({ where: baseWhere });
 
-        // Group by company to pick the best card
-        const groups: Record<string, typeof cards> = {};
-        for (const rc of cards) {
-            const key = (rc.companyCode || '').toLowerCase();
+        // If zone filter returned nothing, retry without zone constraint so we always
+        // show *something* rather than an empty estimate.
+        const effectiveCards =
+            cards.length > 0
+                ? cards
+                : await prisma.rateCard.findMany({
+                      where: {
+                          userId: user.id,
+                          ...(company ? { companyCode: { contains: company, mode: 'insensitive' } } : {}),
+                      },
+                  });
+
+        // Group by company
+        const groups: Record<string, typeof effectiveCards> = {};
+        for (const rc of effectiveCards) {
+            const key = (rc.companyCode || 'unknown').toLowerCase();
             if (!groups[key]) groups[key] = [];
             groups[key].push(rc);
         }
@@ -55,15 +66,24 @@ export async function GET(request: Request) {
         const serviceOptions = [];
 
         for (const [, companyCards] of Object.entries(groups)) {
-            // Find a direct match first, or highest slab max
-            let best = companyCards.find(rc =>
-                rc.weightSlabMin != null && rc.weightSlabMax != null &&
-                Number(rc.weightSlabMin) <= weight && Number(rc.weightSlabMax) >= weight
+            // 1. Try to find a card whose weight slab covers the actual weight
+            let best = companyCards.find(
+                (rc) =>
+                    rc.weightSlabMin != null &&
+                    rc.weightSlabMax != null &&
+                    Number(rc.weightSlabMin) <= weight &&
+                    Number(rc.weightSlabMax) >= weight,
             );
+
+            // 2. Fallback: pick the card with the highest slab max (closest to an "any weight" card)
             if (!best) {
                 best = companyCards[0];
                 for (const rc of companyCards) {
-                    if (rc.weightSlabMax != null && (best.weightSlabMax == null || Number(rc.weightSlabMax) > Number(best.weightSlabMax))) {
+                    if (
+                        rc.weightSlabMax != null &&
+                        (best.weightSlabMax == null ||
+                            Number(rc.weightSlabMax) > Number(best.weightSlabMax))
+                    ) {
                         best = rc;
                     }
                 }
@@ -74,8 +94,6 @@ export async function GET(request: Request) {
             const base = Number(best.baseRate || 0);
             const cod = Number(best.codCharges || 0);
             const fuel = Number(best.fuelSurcharge || 0);
-
-            // Additional charges are removed (always 0 now as requested)
             const subtotal = base + cod + fuel;
             const gst = Math.round(subtotal * 0.16); // 16% GST
             const total = subtotal + gst;
@@ -96,15 +114,16 @@ export async function GET(request: Request) {
             });
         }
 
-        const primaryCost = serviceOptions.length > 0
-            ? Math.min(...serviceOptions.map(s => s.shippingCost))
-            : null;
+        const primaryCost =
+            serviceOptions.length > 0
+                ? Math.min(...serviceOptions.map((s) => s.shippingCost))
+                : null;
 
         return NextResponse.json({
             weight,
             city,
             destZone,
-            suggested: option,
+            suggested,
             serviceOptions,
             shippingCost: primaryCost,
         });

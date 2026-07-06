@@ -193,7 +193,7 @@ export async function POST(request: Request) {
                         status: 'booked',
                         trackingNumber: result.trackingId,
                         labelUrl: result.labelUrl,
-                        courierProvider: courierCompany,
+                        courierProvider: realCompanyName,
                         courierStatus: 'booked',
                         shipmentId: shipment.id,
                         bookedAt: new Date(),

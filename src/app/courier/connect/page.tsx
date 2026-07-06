@@ -47,7 +47,10 @@ export default function ConnectCourier() {
         setLoading(true);
         setError(null);
         setStep(2);
-        setSyncProgress(['Authenticating credentials...']);
+        setSyncProgress([
+            'Securing API credentials connection...',
+            'Caching carriers, operational cities, pickup locations, and rate cards...'
+        ]);
 
         try {
             const res = await fetch('/api/courier/connect', {
@@ -58,15 +61,6 @@ export default function ConnectCourier() {
 
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Connection failed');
-
-            setSyncProgress(prev => [...prev, 'Fetching pickup locations...']);
-            await new Promise(r => setTimeout(r, 600));
-
-            setSyncProgress(prev => [...prev, 'Mapping operational cities...']);
-            await new Promise(r => setTimeout(r, 600));
-
-            setSyncProgress(prev => [...prev, 'Caching service rates...']);
-            await new Promise(r => setTimeout(r, 800));
 
             setAccountInfo(data.account);
             setStep(3);

@@ -27,7 +27,7 @@ export async function POST(request: Request) {
                 data: {
                     shipmentId: shipment.id,
                     trackingNumber,
-                    rawResponse: trackingData,
+                    rawResponse: trackingData.raw ?? trackingData,
                     fetchedAt: new Date(),
                 },
             });
@@ -40,7 +40,9 @@ export async function POST(request: Request) {
             const existingKeys = new Set(existing.map(e => `${e.status}|${e.occurredAt.toISOString()}`));
 
             const newEvents = (trackingData.tracking || []).filter((h: any) => {
-                const key = `${h.status}|${new Date(h.occurred_at || h.occurredAt).toISOString()}`;
+                // trackingData.tracking entries now have h.time as a normalized Date (from flaship.ts getTrackingStatus)
+                const timeKey = h.time instanceof Date ? h.time.toISOString() : String(h.time || '');
+                const key = `${h.status}|${timeKey}`;
                 return !existingKeys.has(key);
             });
 
@@ -49,9 +51,9 @@ export async function POST(request: Request) {
                     data: newEvents.map((h: any) => ({
                         shipmentId: shipment.id,
                         status: h.status,
-                        description: h.description,
+                        description: h.description || h.status,
                         location: h.location,
-                        occurredAt: new Date(h.occurred_at || h.occurredAt),
+                        occurredAt: h.time instanceof Date ? h.time : new Date(h.time || Date.now()),
                         source: 'courier',
                         rawData: h,
                     })),

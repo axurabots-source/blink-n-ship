@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
-    FileText, Download, Loader2, Package, AlertTriangle,
-    CheckSquare, Square, ChevronDown, Search, Printer, X,
+    Loader2, AlertTriangle,
+    CheckSquare, Square, Search, Printer, X,
 } from 'lucide-react';
 
 const T = {
@@ -30,9 +30,7 @@ export default function ShipmentsPage() {
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [search, setSearch] = useState('');
     const [generatingLabel, setGeneratingLabel] = useState(false);
-    const [generatingLoadsheet, setGeneratingLoadsheet] = useState(false);
     const [error, setError] = useState('');
-    const [activeTab, setActiveTab] = useState<'labels' | 'loadsheet'>('labels');
 
     useEffect(() => { fetchOrders(); }, []);
 
@@ -87,30 +85,6 @@ export default function ShipmentsPage() {
         finally { setGeneratingLabel(false); }
     }
 
-    async function handleGenerateLoadsheet() {
-        const cns = Array.from(selected).map((id) => orders.find((o) => o.id === id)?.trackingNumber).filter(Boolean) as string[];
-        if (!cns.length) { setError('No tracking numbers for loadsheet.'); return; }
-        setGeneratingLoadsheet(true); setError('');
-        try {
-            const res = await fetch('/api/courier/loadsheet', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cns }),
-            });
-            if (!res.ok) { const b = await res.json(); throw new Error(b.error || 'Loadsheet failed'); }
-            const contentType = res.headers.get('content-type') || '';
-            if (contentType.includes('application/pdf')) {
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                window.open(url, '_blank');
-            } else {
-                const body = await res.json();
-                if (body.loadsheetUrl) window.open(body.loadsheetUrl, '_blank');
-            }
-        } catch (err: any) { setError(err.message); }
-        finally { setGeneratingLoadsheet(false); }
-    }
-
     return (
         <motion.div
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
@@ -120,7 +94,7 @@ export default function ShipmentsPage() {
         >
             <div style={{ marginBottom: 28 }}>
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 700, color: T.fg, margin: 0 }}>Shipments</h1>
-                <p style={{ color: T.muted, fontSize: '0.875rem', margin: '4px 0 0' }}>Generate labels and loadsheets for your booked orders.</p>
+                <p style={{ color: T.muted, fontSize: '0.875rem', margin: '4px 0 0' }}>Print labels for your booked orders.</p>
             </div>
 
             {error && (
@@ -157,17 +131,6 @@ export default function ShipmentsPage() {
                         {generatingLabel ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
                         Print Labels ({selected.size})
                     </motion.button>
-
-                    <motion.button
-                        onClick={handleGenerateLoadsheet}
-                        disabled={selected.size === 0 || generatingLoadsheet}
-                        whileHover={{ scale: selected.size === 0 || generatingLoadsheet ? 1 : 1.02 }}
-                        whileTap={{ scale: 0.97 }}
-                        style={{ display: 'flex', alignItems: 'center', gap: 7, background: selected.size === 0 || generatingLoadsheet ? '#e5e5e5' : '#0a0a0a', color: selected.size === 0 || generatingLoadsheet ? T.muted : '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: '0.82rem', fontWeight: 600, cursor: selected.size === 0 || generatingLoadsheet ? 'not-allowed' : 'pointer' }}
-                    >
-                        {generatingLoadsheet ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
-                        Loadsheet ({selected.size})
-                    </motion.button>
                 </div>
             </div>
 
@@ -185,7 +148,7 @@ export default function ShipmentsPage() {
                                             {filtered.length > 0 && filtered.every((o) => selected.has(o.id)) ? <CheckSquare size={16} /> : <Square size={16} />}
                                         </button>
                                     </th>
-                                    {['Tracking ID', 'Customer', 'City', 'Courier', 'COD', 'Booked At', 'Label'].map((h) => (
+                                    {['Tracking ID', 'Customer', 'City', 'Courier', 'COD', 'Booked At'].map((h) => (
                                         <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: '0.68rem', fontWeight: 600, color: T.muted, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{h}</th>
                                     ))}
                                 </tr>
@@ -209,12 +172,6 @@ export default function ShipmentsPage() {
                                         <td style={{ padding: '8px 16px', fontSize: '0.8rem', color: T.muted }}>{o.courierProvider || '—'}</td>
                                         <td style={{ padding: '8px 16px', fontSize: '0.82rem', color: T.fg }}>{o.sellingPrice ? `Rs ${Number(o.sellingPrice).toLocaleString('en-PK')}` : '—'}</td>
                                         <td style={{ padding: '8px 16px', fontSize: '0.78rem', color: T.muted }}>{o.bookedAt ? new Date(o.bookedAt).toLocaleString('en-PK', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-                                        <td style={{ padding: '8px 16px' }}>
-                                            {o.labelUrl
-                                                ? <a href={o.labelUrl} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, color: T.accent, fontSize: '0.78rem', fontWeight: 600, textDecoration: 'none' }}><Download size={12} /> Download</a>
-                                                : <span style={{ color: T.muted, fontSize: '0.76rem' }}>—</span>
-                                            }
-                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

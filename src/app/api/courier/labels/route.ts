@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateLabel } from '@/lib/flaship';
 
+const FLASHIP_BASE = 'https://partners.flaship.pk';
+
 export async function POST(request: Request) {
     try {
         const supabase = await createClient();
@@ -16,7 +18,11 @@ export async function POST(request: Request) {
         const result = await generateLabel(user.id, cns);
 
         if (result._binary) {
-            return new Response(result.data, {
+            const buf = result.data;
+            const ab = buf
+                ? (buf as Uint8Array).buffer.slice((buf as Uint8Array).byteOffset, (buf as Uint8Array).byteOffset + (buf as Uint8Array).byteLength)
+                : new ArrayBuffer(0);
+            return new Response(ab as BodyInit, {
                 headers: {
                     'Content-Type': 'application/pdf',
                     'Content-Disposition': 'inline; filename="labels.pdf"',
@@ -24,7 +30,11 @@ export async function POST(request: Request) {
             });
         }
 
-        return NextResponse.json({ success: true, labelUrl: result.labelUrl || result.raw?.label_url });
+        // Flaship may return a relative URL — resolve to absolute.
+        const rawUrl: string | null = result.labelUrl || (result as any).raw?.label_url || null;
+        const labelUrl = rawUrl && rawUrl.startsWith('/') ? `${FLASHIP_BASE}${rawUrl}` : rawUrl;
+
+        return NextResponse.json({ success: true, labelUrl });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }

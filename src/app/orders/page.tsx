@@ -137,10 +137,33 @@ export default function OrdersPage() {
     const [courierCompanies, setCourierCompanies] = useState<{ id: string; name: string; code: string }[]>([]);
 
     useEffect(() => {
-        refresh();
-        loadProducts();
-        loadCourierMeta();
+        async function init() {
+            await refresh();
+            loadProducts();
+            loadCourierMeta();
+        }
+        init();
     }, []);
+
+    // Auto-fetch rate estimates whenever the orders list changes (initial load + after refresh)
+    // Only fires for draft orders that have both weight and city populated.
+    useEffect(() => {
+        const drafts = orders.filter((o) => o.status === 'draft' && o.weight && o.city);
+        if (drafts.length === 0) return;
+        for (const order of drafts) {
+            // Only trigger if we don't already have an estimate for this order
+            if (!rateEstimates[order.id]) {
+                fetchRateEstimate(
+                    order.id,
+                    parseFloat(String(order.weight || '0')) || 0,
+                    order.city || '',
+                    selectedCourier[order.id],
+                );
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [orders]);
+
 
     async function loadCourierMeta() {
         try {
@@ -1240,10 +1263,13 @@ export default function OrdersPage() {
                                                 {(() => {
                                                     const fe = fieldErrors[order.id];
                                                     const errBorder = (f: string) => fe?.has(f) ? '#dc2626' : T.border;
+                                                    const isCityOpen = !!cityDropdownOpen[order.id];
                                                     const cityQuery = (order.city || '').toLowerCase();
-                                                    const filteredCities = dbCities.filter(c =>
-                                                        !cityQuery || c.name.toLowerCase().includes(cityQuery)
-                                                    ).slice(0, 100);
+                                                    const filteredCities = isCityOpen
+                                                        ? dbCities.filter(c =>
+                                                            !cityQuery || c.name.toLowerCase().includes(cityQuery)
+                                                        ).slice(0, 100)
+                                                        : [];
                                                     return (
                                                         <>
                                                 <div>
@@ -1550,10 +1576,13 @@ export default function OrdersPage() {
                                                         const courierErr = fieldErrors[order.id]?.has('courier');
                                                         const currentCode = selectedCourier[order.id] || '';
                                                         const currentName = courierCompanies.find(c => c.code === currentCode)?.name || currentCode;
+                                                        const isCourierOpen = !!courierDropdownOpen[order.id];
                                                         const searchTerm = (courierSearch[order.id] ?? currentName).toLowerCase();
-                                                        const filteredCompanies = courierCompanies.filter(c =>
-                                                            !searchTerm || c.name.toLowerCase().includes(searchTerm) || c.code.toLowerCase().includes(searchTerm)
-                                                        ).slice(0, 50);
+                                                        const filteredCompanies = isCourierOpen
+                                                            ? courierCompanies.filter(c =>
+                                                                !searchTerm || c.name.toLowerCase().includes(searchTerm) || c.code.toLowerCase().includes(searchTerm)
+                                                            ).slice(0, 50)
+                                                            : [];
                                                         return (
                                                             <div style={{ position: 'relative' }}>
                                                                 <span style={{ fontSize: '0.7rem', color: courierErr ? '#dc2626' : T.muted, fontWeight: 500, display: 'block', marginBottom: 4 }}>
@@ -1879,31 +1908,6 @@ export default function OrdersPage() {
                                             </>
                                         ) : (
                                             <>
-                                                {/* If exactly one selected, show Edit option */}
-                                                {selectedBooked.size === 1 && (
-                                                    <button
-                                                        onClick={() => {
-                                                            const id = Array.from(selectedBooked)[0];
-                                                            const ord = bookedOrders.find((o) => o.id === id);
-                                                            if (ord) startEditBooked(ord);
-                                                        }}
-                                                        style={{
-                                                            border: `1px solid ${T.accent}`,
-                                                            background: T.bg,
-                                                            color: T.accent,
-                                                            borderRadius: '6px',
-                                                            padding: '4px 10px',
-                                                            fontSize: '0.8rem',
-                                                            cursor: 'pointer',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: 4,
-                                                        }}
-                                                    >
-                                                        <Edit2 size={12} /> Edit Order
-                                                    </button>
-                                                )}
-
                                                 <button
                                                     onClick={handleUnbookSelected}
                                                     disabled={unbooking}

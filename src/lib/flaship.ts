@@ -1,5 +1,16 @@
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
+import {
+    normalizeCompanyList,
+    normalizeStatuses,
+    normalizePickupLocationsList,
+    normalizeRateCards,
+    normalizeBooking,
+    normalizeTracking,
+    normalizeCancel,
+    normalizeLoadsheet,
+    normalizeLabel,
+} from '@/lib/flaship-adapter';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -91,19 +102,19 @@ async function apiRequest(
 // ─────────────────────────────────────────────────────────────────────────────
 // VERIFY CONNECTION & FETCH COMPANY LIST
 // GET /company_list/ → { pickupAddress[], companies[], rateCards{}, operations_cities[] }
+// Note: pickupAddress only has {id, address} per Flaship docs (NOT shipperName/shipperPhone)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function verifyAndFetchAccount(userId: string) {
     const { api_key } = await getCredentials(userId);
-    const data = await apiRequest(api_key, '/company_list/', 'GET');
-    // Return a structured account summary from the response
-    const firstPickup = Array.isArray(data.pickupAddress) ? data.pickupAddress[0] : null;
+    const raw = await apiRequest(api_key, '/company_list/', 'GET');
+    const normalized = normalizeCompanyList(raw);
     return {
-        success: true,
-        businessName: firstPickup?.shipperName || firstPickup?.name || 'Connected Account',
-        phone: firstPickup?.shipperPhone || firstPickup?.phone || null,
-        companiesCount: Array.isArray(data.companies) ? data.companies.length : 0,
-        citiesCount: Array.isArray(data.operations_cities) ? data.operations_cities.length : 0,
-        raw: data,
+        success: normalized.account.success,
+        businessName: normalized.account.businessName,
+        phone: normalized.account.phone,
+        companiesCount: normalized.account.companiesCount,
+        citiesCount: normalized.account.citiesCount,
+        raw,
     };
 }
 
@@ -112,12 +123,13 @@ export async function verifyAndFetchAccount(userId: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchAllReferenceData(userId: string) {
     const { api_key } = await getCredentials(userId);
-    const data = await apiRequest(api_key, '/company_list/', 'GET');
+    const raw = await apiRequest(api_key, '/company_list/', 'GET');
+    const n = normalizeCompanyList(raw);
     return {
-        pickupAddresses: data.pickupAddress || [],
-        companies: data.companies || [],
-        rateCards: data.rateCards || data.rate_cards || [],
-        cities: data.operations_cities || data.operationsCities || [],
+        pickupAddresses: n.pickupLocations,
+        companies: n.companies,
+        rateCards: n.rateCards,
+        cities: n.cities,
     };
 }
 
@@ -126,8 +138,9 @@ export async function fetchAllReferenceData(userId: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchPickupLocations(userId: string) {
     const { api_key } = await getCredentials(userId);
-    const data = await apiRequest(api_key, '/company_list/', 'GET');
-    return { locations: data.pickupAddress || [] };
+    const raw = await apiRequest(api_key, '/api/pickup-locations/', 'GET');
+    const locations = normalizePickupLocationsList(raw);
+    return { locations };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,81 +148,20 @@ export async function fetchPickupLocations(userId: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchCourierCompanies(userId: string) {
     const { api_key } = await getCredentials(userId);
-    const data = await apiRequest(api_key, '/company_list/', 'GET');
-
-    // Flaship returns companies as a plain string array: ["TCS", "Daewoo", "Leopard", ...]
-    // Normalize each entry into an object so the route mapping works regardless of shape.
-    const raw: any[] = data.companies || [];
-    const couriers = raw.map((c: any) => {
-        if (typeof c === 'string') {
-            const name = c.trim();
-            const code = name.toLowerCase().replace(/\s+/g, '_');
-            return { id: code, name, code, active: true, is_default: false };
-        }
-        // Already an object — pass through as-is
-        return c;
-    });
-
+    const raw = await apiRequest(api_key, '/company_list/', 'GET');
+    const normalized = normalizeCompanyList(raw);
+    const couriers = normalized.companies;
     console.log('[Flaship] fetchCourierCompanies → normalized couriers count:', couriers.length);
     if (couriers.length > 0) console.log('[Flaship] couriers[0]:', JSON.stringify(couriers[0]));
-
     return { couriers };
 }
 
 export async function fetchOperationalCities(userId: string) {
     const { api_key } = await getCredentials(userId);
-    const data = await apiRequest(api_key, '/company_list/', 'GET');
-    
-    // Debug: log raw keys from Flaship response
-    console.log('[Flaship] fetchOperationalCities raw keys:', Object.keys(data));
-    
-    // Try all known key variations (double-o typo + others)
-    const opCitiesObj = data.operatioons_cities
-        || data.operations_cities
-        || data.operationalCities
-        || data.operational_cities
-        || {};
-    
-    console.log('[Flaship] opCitiesObj type:', typeof opCitiesObj, 'isArray:', Array.isArray(opCitiesObj));
-    const objKeys = typeof opCitiesObj === 'object' && !Array.isArray(opCitiesObj) ? Object.keys(opCitiesObj) : [];
-    console.log('[Flaship] opCitiesObj sub-keys:', objKeys.slice(0, 10));
-    if (objKeys.length > 0) {
-        const firstKey = objKeys[0];
-        console.log('[Flaship] cities[' + firstKey + '] sample:', JSON.stringify(opCitiesObj[firstKey]).substring(0, 200));
-    }
-
-    const uniqueCities = new Set<string>();
-    
-    if (Array.isArray(opCitiesObj)) {
-        // If it's a flat array of strings
-        opCitiesObj.forEach((city: any) => {
-            const name = typeof city === 'string' ? city : (city?.name || city?.city_name || '');
-            if (name.trim()) uniqueCities.add(name.trim());
-        });
-    } else {
-        // Object with courier-name keys e.g. { Leopard_all: ["Lahore", ...] }
-        Object.keys(opCitiesObj).forEach(key => {
-            const cityList = opCitiesObj[key];
-            if (Array.isArray(cityList)) {
-                cityList.forEach((city: any) => {
-                    const name = typeof city === 'string' ? city : (city?.name || city?.city_name || '');
-                    if (name.trim()) uniqueCities.add(name.trim());
-                });
-            }
-        });
-    }
-
-    console.log('[Flaship] parsed unique cities count:', uniqueCities.size);
-
-    const parsedCities = Array.from(uniqueCities).sort().map((name, idx) => ({
-        id: String(idx + 1),
-        name: name,
-        code: name.toLowerCase().replace(/\s+/g, '_'),
-        zone: null,
-        active: true,
-    }));
-
-    return { cities: parsedCities };
+    const raw = await apiRequest(api_key, '/company_list/', 'GET');
+    const normalized = normalizeCompanyList(raw);
+    console.log('[Flaship] fetchOperationalCities parsed unique cities count:', normalized.cities.length);
+    return { cities: normalized.cities };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -217,142 +169,41 @@ export async function fetchOperationalCities(userId: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchRateCards(userId: string) {
     const { api_key } = await getCredentials(userId);
-    let data: any = null;
-    let fallbackUsed = false;
-    
+    let raw: any;
     try {
-        data = await apiRequest(api_key, '/api/rate-card/', 'GET');
-        console.log('[Flaship] fetchRateCards /api/rate-card/ response keys:', Object.keys(data || {}));
+        raw = await apiRequest(api_key, '/api/rate-card/', 'GET');
+        console.log('[Flaship] fetchRateCards /api/rate-card/ response keys:', Object.keys(raw || {}));
     } catch (err: any) {
         console.warn('[Flaship] fetchRateCards /api/rate-card/ failed, falling back to /company_list/. Error:', err.message);
-        data = await apiRequest(api_key, '/company_list/', 'GET');
-        fallbackUsed = true;
-        console.log('[Flaship] fetchRateCards fallback /company_list/ response keys:', Object.keys(data || {}));
+        raw = await apiRequest(api_key, '/company_list/', 'GET');
     }
 
-    const normalized: any[] = [];
+    let normalized = normalizeRateCards(raw);
 
-    // Rate cards might be under data.companies, data.rateCards, data.rate_cards, or data.rates
-    const companies = data.companies || data.couriers || [];
-    const directRateCards = data.rateCards || data.rate_cards || data.rates || [];
-
-    console.log('[Flaship] fetchRateCards companies count:', Array.isArray(companies) ? companies.length : typeof companies);
-    console.log('[Flaship] fetchRateCards directRateCards count:', Array.isArray(directRateCards) ? directRateCards.length : typeof directRateCards);
-
-    // 1. Handle nested companies structure: [ { company_name: "Leopard", rate_cards: [...] } ]
-    if (Array.isArray(companies) && companies.length > 0 && typeof companies[0] === 'object' && companies[0] !== null) {
-        for (const company of companies) {
-            const compName = company.company_name || company.name || company.code || '';
-            const cards = company.rate_cards || company.rateCards || company.rates || [];
-            if (Array.isArray(cards)) {
-                for (const card of cards) {
-                    if (card && typeof card === 'object') {
-                        normalized.push({
-                            id: card.id || `${compName}-${card.service_type}`,
-                            company_code: compName.toLowerCase(),
-                            service_type: card.service_type || card.serviceType || 'overnight',
-                            min_w: parseFloat(card.weight_from || card.min_w || card.weightSlabMin) || 0,
-                            max_w: parseFloat(card.weight_to || card.max_w || card.weightSlabMax) || 0.5,
-                            base: parseFloat(card.charges || card.baseRate || card.base) || 0,
-                            extra: parseFloat(card.extra_charges_per_kg || card.perKgRate || card.extra) || 0,
-                            cod_fee: parseFloat(card.other_charges || card.codCharges || card.cod_fee) || 0,
-                            fuel: parseFloat(card.fuelSurcharge || card.fuel) || 0,
-                            origin: card.origin || card.originZone || null,
-                            destination: card.destination || card.destinationZone || null
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. Handle flat rate cards list
-    if (normalized.length === 0 && Array.isArray(directRateCards)) {
-        for (const card of directRateCards) {
-            if (card && typeof card === 'object') {
-                const compName = card.company_code || card.company || card.courier || 'flaship';
-                normalized.push({
-                    id: card.id || `${compName}-${card.service_type || card.serviceType}`,
-                    company_code: compName.toLowerCase(),
-                    service_type: card.service_type || card.serviceType || 'overnight',
-                    min_w: parseFloat(card.weight_from || card.min_w || card.weightSlabMin) || 0,
-                    max_w: parseFloat(card.weight_to || card.max_w || card.weightSlabMax) || 0.5,
-                    base: parseFloat(card.charges || card.baseRate || card.base) || 0,
-                    extra: parseFloat(card.extra_charges_per_kg || card.perKgRate || card.extra) || 0,
-                    cod_fee: parseFloat(card.other_charges || card.codCharges || card.cod_fee) || 0,
-                    fuel: parseFloat(card.fuelSurcharge || card.fuel) || 0,
-                    origin: card.origin || card.originZone || null,
-                    destination: card.destination || card.destinationZone || null
-                });
-            }
-        }
-    }
-
-    // 3. Fallback to basic dummy rate cards per company if both returned nothing
+    // Fallback to basic default rate cards per company if API returned nothing.
     if (normalized.length === 0) {
-        console.warn('[Flaship] No rate cards found in response. Generating basic default rate cards for connected companies...');
-        // Let's get active companies in DB or fallback
+        console.warn('[Flaship] No rate cards found in response. Generating default rate cards...');
         const courierNames = ['tcs', 'daewoo', 'leopard', 'trax', 'mnp', 'tranzo', 'dex'];
-        for (const name of courierNames) {
-            normalized.push({
-                id: `${name}-overnight`,
-                company_code: name,
-                service_type: 'overnight',
-                min_w: 0,
-                max_w: 1,
-                base: 250,
-                extra: 100,
-                cod_fee: 0,
-                fuel: 0,
-                origin: 'All',
-                destination: 'All'
-            });
-            normalized.push({
-                id: `${name}-overland`,
-                company_code: name,
-                service_type: 'overland',
-                min_w: 0,
-                max_w: 10,
-                base: 500,
-                extra: 50,
-                cod_fee: 0,
-                fuel: 0,
-                origin: 'All',
-                destination: 'All'
-            });
-        }
+        normalized = courierNames.flatMap((name) => [
+            { id: `${name}-overnight`, company_code: name, service_type: 'overnight', min_w: 0, max_w: 1, base: 250, extra: 100, cod_fee: 0, fuel: 0, origin: 'All', destination: 'All' },
+            { id: `${name}-overland`, company_code: name, service_type: 'overland', min_w: 0, max_w: 10, base: 500, extra: 50, cod_fee: 0, fuel: 0, origin: 'All', destination: 'All' },
+        ]);
     }
 
     console.log('[Flaship] fetchRateCards final normalized rates count:', normalized.length);
-    if (normalized.length > 0) {
-        console.log('[Flaship] Sample rate card:', JSON.stringify(normalized[0]));
-    }
-
+    if (normalized.length > 0) console.log('[Flaship] Sample rate card:', JSON.stringify(normalized[0]));
     return { rates: normalized };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FETCH SERVICE TYPES (derived from companies list)
+// FETCH SERVICE TYPES
+// GET /api/statuses/ → { service_types: ["overnight","detain","overland"] }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchServiceTypes(userId: string) {
     const { api_key } = await getCredentials(userId);
-    const data = await apiRequest(api_key, '/company_list/', 'GET');
-    const companies = data.companies || [];
-    // Each company may have service_types or courierOptions array
-    const services: any[] = [];
-    for (const company of companies) {
-        const opts = company.courierOptions || company.service_types || company.options || [];
-        for (const opt of opts) {
-            services.push({
-                id: `${company.id || company.code}-${opt.code || opt.id}`,
-                company_id: company.id || company.code,
-                name: opt.name || opt.label || opt.code,
-                code: opt.code || opt.id,
-                desc: opt.description || '',
-            });
-        }
-    }
-    return { services };
+    const raw = await apiRequest(api_key, '/api/statuses/', 'GET');
+    const normalized = normalizeStatuses(raw);
+    return { services: normalized.serviceTypes };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -377,32 +228,37 @@ export async function bookShipment(userId: string, orderData: {
 }) {
     const { api_key } = await getCredentials(userId);
 
-    const payload: Record<string, any> = {
-        consigneeName: orderData.customerName,
-        consigneePhone1: orderData.phoneNumber,
-        consigneeAddress: orderData.address,
-        destinationCity: orderData.city,
-        codAmount: orderData.codAmount,
-        productName: orderData.productName || 'Product',
-        productWeight: orderData.weight,
-        productPieces: orderData.pieces,
-        courierCompany: orderData.courierCompany,
-        courierOption: orderData.courierOption || orderData.shippingType,
-    };
-
-    if (orderData.pickupExternalId) {
-        payload.pickuplocation = orderData.pickupExternalId;
+    // pickuplocation is a REQUIRED param per Flaship docs — reject early if missing
+    if (!orderData.pickupExternalId) {
+        throw new Error(
+            'Pickup location ID is required for booking. ' +
+            'Please ensure you have a default pickup location set in your courier settings.'
+        );
     }
 
-    const response = await apiRequest(api_key, '/api/packet_booking', 'POST', payload);
+    const payload: Record<string, any> = {
+        consigneeName: String(orderData.customerName || ''),
+        consigneePhone1: String(orderData.phoneNumber || ''),
+        consigneeAddress: String(orderData.address || ''),
+        destinationCity: String(orderData.city || ''),
+        codAmount: String(orderData.codAmount || 0),
+        productName: String(orderData.productName || 'Product'),
+        productWeight: String(orderData.weight || 0.5),
+        productPieces: String(orderData.pieces || 1),
+        courierCompany: String(orderData.courierCompany || ''),
+        courierOption: String(orderData.courierOption || orderData.shippingType || 'overnight').toLowerCase(),
+        pickuplocation: String(orderData.pickupExternalId || ''),
+    };
 
+    const response = await apiRequest(api_key, '/api/packet_booking', 'POST', payload);
+    const n = normalizeBooking(response);
     return {
-        success: response.success || true,
-        orderNo: response.orderNo || response.order_no,
-        trackingId: response.trackingId || response.tracking_id || response.cn,
-        cn: response.trackingId || response.tracking_id || response.cn,
-        labelUrl: response.labelUrl || response.label_url || null,
-        courier_status: 'booked',
+        success: n.success,
+        orderNo: n.orderNo,
+        trackingId: n.trackingId,
+        cn: n.cn,
+        labelUrl: n.labelUrl,
+        courier_status: n.courier_status,
         raw: response,
     };
 }
@@ -429,13 +285,14 @@ export async function bulkBookShipments(userId: string, orders: any[]) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function getTrackingStatus(userId: string, trackingNumber: string) {
     const { api_key } = await getCredentials(userId);
-    const data = await apiRequest(api_key, `/api/order_tracking/${trackingNumber}/`, 'GET');
+    const raw = await apiRequest(api_key, `/api/order_tracking/${trackingNumber}/`, 'GET');
+    const n = normalizeTracking(raw);
     return {
-        success: data.status || true,
+        success: n.success,
         trackingNumber,
-        orderStatus: data.order_status || 'Unknown',
-        tracking: data.tracking || [],
-        raw: data,
+        orderStatus: n.orderStatus,
+        tracking: n.tracking,
+        raw,
     };
 }
 
@@ -445,12 +302,25 @@ export async function getTrackingStatus(userId: string, trackingNumber: string) 
 // ─────────────────────────────────────────────────────────────────────────────
 export async function cancelShipment(userId: string, trackingNumber: string) {
     const { api_key } = await getCredentials(userId);
-    const data = await apiRequest(api_key, '/api/cancel_order/', 'POST', { cn: trackingNumber });
-    return {
-        success: data.success || true,
-        message: data.message || 'Cancelled',
-        raw: data,
-    };
+    const raw = await apiRequest(api_key, '/api/cancel_order/', 'POST', { cn: trackingNumber });
+    const n = normalizeCancel(raw);
+    return { success: n.success, message: n.message, raw };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOADSHEET ELIGIBLE ORDERS
+// GET /api/loadsheet/eligible-orders/
+// Returns booked orders that do NOT yet have a loadsheet — these are the only
+// CNs that /api/loadsheet/ will accept.
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getEligibleLoadsheetOrders(userId: string): Promise<string[]> {
+    const { api_key } = await getCredentials(userId);
+    const raw = await apiRequest(api_key, '/api/loadsheet/eligible-orders/', 'GET');
+    const orders: any[] = Array.isArray(raw?.orders) ? raw.orders : [];
+    // Extract tracking_number from each eligible order
+    return orders
+        .map((o: any) => o.tracking_number || o.cn || o.trackingNumber)
+        .filter(Boolean) as string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -459,13 +329,15 @@ export async function cancelShipment(userId: string, trackingNumber: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function generateLoadsheet(userId: string, trackingNumbers: string[]) {
     const { api_key } = await getCredentials(userId);
-    const data = await apiRequest(api_key, '/api/loadsheet/', 'POST', { cns: trackingNumbers });
+    const raw = await apiRequest(api_key, '/api/loadsheet/', 'POST', { cns: trackingNumbers });
+    const n = normalizeLoadsheet(raw);
     return {
-        success: data.success || true,
-        loadsheetId: data.loadsheet_id || data.id,
-        loadsheetUrl: data.loadsheet_url || data.url || null,
+        success: n.success,
+        loadsheetId: n.loadsheetId,
+        loadsheetUrl: n.loadsheetUrl,
         orderCount: trackingNumbers.length,
-        raw: data,
+        generatedCount: n.generatedCount,
+        raw,
     };
 }
 
@@ -476,16 +348,10 @@ export async function generateLoadsheet(userId: string, trackingNumbers: string[
 // ─────────────────────────────────────────────────────────────────────────────
 export async function generateLabel(userId: string, trackingNumbers: string[]) {
     const { api_key } = await getCredentials(userId);
-    const data = await apiRequest(api_key, '/generate_label', 'POST', { cns: trackingNumbers });
-
-    if (data._binary) {
-        // Binary PDF — caller must stream it
-        return { _binary: true, data: data.data, contentType: data.contentType };
+    const raw = await apiRequest(api_key, '/generate_label', 'POST', { cns: trackingNumbers });
+    const n = normalizeLabel(raw);
+    if (n._binary) {
+        return { _binary: true, data: n.data, contentType: n.contentType };
     }
-
-    return {
-        success: data.success || true,
-        labelUrl: data.label_url || data.url || null,
-        raw: data,
-    };
+    return { _binary: false, labelUrl: n.labelUrl, raw };
 }

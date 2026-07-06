@@ -38,6 +38,7 @@ export async function POST(request: Request) {
             pieces: order.quantity || 1,
             courierCompany: courierCompany || 'flaship_direct',
             pickupLocationId: pickupLocation?.id,
+            pickupExternalId: pickupLocation?.externalId ?? undefined,
         });
 
         // Create Shipment record
