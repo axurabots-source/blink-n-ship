@@ -333,7 +333,7 @@ function InputField({ type, placeholder, value, onChange, required, minLength }:
             style={{
                 width: '100%',
                 padding: '0.875rem 1rem',
-                fontSize: '0.875rem',
+                fontSize: '16px', // Must be ≥16px to prevent iOS/Safari auto-zoom on focus
                 borderRadius: '0.75rem',
                 border: `1.5px solid ${focused ? '#CC785C' : '#e5e5e5'}`,
                 background: focused ? '#fffcfb' : '#fafafa',
@@ -372,7 +372,9 @@ export default function LoginPage() {
 
         setLoading(false);
         if (authError) { setError(authError.message); return; }
-        router.push(isSignup ? '/account-type' : '/dashboard');
+        // Mobile users go directly to /courier/connect — desktop users go to /dashboard
+        const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+        router.push(isSignup ? '/account-type' : (isMobile ? '/courier/connect' : '/dashboard'));
         router.refresh();
     }
 

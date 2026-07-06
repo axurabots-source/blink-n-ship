@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppSidebar from "@/components/AppSidebar";
@@ -16,6 +16,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Blink N Ship",
   description: "Order processing made simple",
+};
+
+// Prevent iOS/Safari from auto-zooming when inputs are focused.
+// maximum-scale=1 keeps zoom at 100% while still allowing user-initiated pinch-zoom.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({
