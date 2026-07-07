@@ -84,41 +84,46 @@ export default function DashboardClient() {
     } | null>(null);
 
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
-    // Load from memory cache on mount to render instantly
+    async function fetchDashboard() {
+        try {
+            const res = await fetch('/api/dashboard');
+            if (res.ok) {
+                const json = await res.json();
+                const payload = {
+                    businessName: json.businessName,
+                    accountType: json.accountType,
+                    stats: json.stats,
+                    graphData: json.graphData,
+                    todayOrders: json.todayOrders,
+                };
+                setData(payload);
+                if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
+                (window as any).__BNS_CACHE__.dashboard = payload;
+            }
+        } catch (e) {
+            console.error('Failed to load dashboard:', e);
+        }
+    }
+
     useEffect(() => {
         const globalCache = (window as any).__BNS_CACHE__?.dashboard;
         if (globalCache) {
             setData(globalCache);
-            setLoading(false);
         }
 
-        async function fetchDashboard() {
-            try {
-                const res = await fetch('/api/dashboard');
-                if (res.ok) {
-                    const json = await res.json();
-                    const payload = {
-                        businessName: json.businessName,
-                        accountType: json.accountType,
-                        stats: json.stats,
-                        graphData: json.graphData,
-                        todayOrders: json.todayOrders,
-                    };
-                    setData(payload);
-                    // Update cache
-                    if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
-                    (window as any).__BNS_CACHE__.dashboard = payload;
-                }
-            } catch (e) {
-                console.error('Failed to load dashboard:', e);
-            } finally {
-                setLoading(false);
-            }
-        }
+        fetchDashboard().finally(() => setLoading(false));
 
-        fetchDashboard();
+        const interval = setInterval(fetchDashboard, 30000);
+        return () => clearInterval(interval);
     }, []);
+
+    async function handleRefresh() {
+        setRefreshing(true);
+        await fetchDashboard();
+        setRefreshing(false);
+    }
 
     if (loading && !data) {
         // Premium minimalist skeleton loader instead of blank page/heavy spinners
@@ -210,6 +215,8 @@ export default function DashboardClient() {
                     color: #16a34a;
                 }
 
+                .bns-spin { animation: spin 0.8s linear infinite; }
+                @keyframes spin { 100% { transform: rotate(360deg); } }
                 @media (max-width: 768px) {
                     .dash-header-row { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
                     .dash-stat-grid { grid-template-columns: 1fr 1fr !important; gap: 12px !important; }
@@ -227,7 +234,7 @@ export default function DashboardClient() {
                 transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 style={{ marginBottom: 40 }}
             >
-                <div className="dash-header-row" style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
+                <div className="dash-header-row" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
                     <h1 style={{ fontSize: '1.6rem', fontWeight: 700, color: '#0a0a0a', margin: 0 }}>
                         {businessName ? `${businessName}` : 'Dashboard'}
                     </h1>
@@ -245,6 +252,32 @@ export default function DashboardClient() {
                     >
                         {accountLabel}
                     </span>
+                    <button
+                        onClick={handleRefresh}
+                        disabled={refreshing}
+                        style={{
+                            marginLeft: 'auto',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '6px 14px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            color: T.accent,
+                            background: T.accentLight,
+                            border: '1px solid #f0d4c8',
+                            borderRadius: 8,
+                            cursor: refreshing ? 'not-allowed' : 'pointer',
+                            opacity: refreshing ? 0.6 : 1,
+                            transition: 'all 0.15s ease',
+                            whiteSpace: 'nowrap',
+                        }}
+                        onMouseEnter={(e) => { if (!refreshing) e.currentTarget.style.background = '#fce8df'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = T.accentLight; }}
+                    >
+                        <RefreshCw size={14} className={refreshing ? 'bns-spin' : ''} />
+                        {refreshing ? 'Refreshing...' : 'Refresh'}
+                    </button>
                 </div>
                 <p style={{ color: '#737373', fontSize: '0.875rem', margin: 0 }}>
                     Here's what's happening with your shipments today.

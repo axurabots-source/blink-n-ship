@@ -38,7 +38,6 @@ const courierSubLinks = [
     { href: '/courier/companies', label: 'Companies', icon: Truck },
     { href: '/courier/rate-cards', label: 'Rate Cards', icon: DollarSign },
     { href: '/courier/cities', label: 'Cities', icon: Globe },
-    { href: '/courier/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function AppSidebar() {
@@ -93,7 +92,7 @@ export default function AppSidebar() {
             flexDirection: 'column',
             height: '100%',
             width: '100%',
-            overflowY: 'auto',
+            overflow: 'hidden',
             background: '#0a0a0a',
         }}>
             {/* Title / Logo */}
@@ -153,6 +152,8 @@ export default function AppSidebar() {
             {/* Nav links */}
             <nav style={{
                 flex: 1,
+                minHeight: 0,
+                overflowY: 'auto',
                 padding: '12px 12px',
                 display: 'flex',
                 flexDirection: 'column',
@@ -294,11 +295,38 @@ export default function AppSidebar() {
                 </div>
             </nav>
 
+            {/* Settings link above Logout */}
+            <div style={{ padding: '4px 12px 8px', flexShrink: 0 }}>
+                <Link
+                    href="/settings"
+                    onClick={() => setMobileOpen(false)}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '10px 16px',
+                        borderRadius: '8px',
+                        fontSize: '0.875rem',
+                        fontWeight: 500,
+                        textDecoration: 'none',
+                        transition: 'all 0.15s ease',
+                        background: pathname === '/settings' ? '#CC785C' : 'transparent',
+                        color: pathname === '/settings' ? '#ffffff' : '#a3a3a3',
+                    }}
+                    onMouseEnter={(e) => { if (pathname !== '/settings') { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#ffffff'; } }}
+                    onMouseLeave={(e) => { if (pathname !== '/settings') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#a3a3a3'; } }}
+                >
+                    <Settings size={16} strokeWidth={pathname === '/settings' ? 2.5 : 2} />
+                    Settings
+                </Link>
+            </div>
+
             {/* Logout bottom section */}
             <div style={{
                 padding: '16px 12px',
                 borderTop: '1px solid #1a1a1a',
                 marginTop: 'auto',
+                flexShrink: 0,
             }}>
                 <button
                     onClick={handleLogout}

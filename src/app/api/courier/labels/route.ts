@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateLabel } from '@/lib/flaship';
 
-const FLASHIP_BASE = 'https://partners.flaship.pk';
+const FLASHIP_BASE = process.env.FLASHIP_BASE_URL || 'https://partners.flaship.pk';
 
 export async function POST(request: Request) {
     try {

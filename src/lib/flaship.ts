@@ -15,7 +15,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
-const BASE_URL = 'https://partners.flaship.pk/mr';
+const BASE_URL = process.env.FLASHIP_BASE_URL ? `${process.env.FLASHIP_BASE_URL}/mr` : 'https://partners.flaship.pk/mr';
 const TIMEOUT_MS = 60000;
 
 // ─────────────────────────────────────────────────────────────────────────────

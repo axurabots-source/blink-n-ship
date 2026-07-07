@@ -18,5 +18,7 @@ services:
         sync: false
       - key: CREDENTIALS_ENCRYPTION_KEY
         sync: false
+      - key: FLASHIP_BASE_URL
+        sync: false
       - key: NODE_VERSION
         value: 20

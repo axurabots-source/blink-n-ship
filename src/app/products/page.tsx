@@ -119,12 +119,12 @@ export default function ProductsPage() {
         return new Promise((resolve, reject) => {
             const fileExt = file.name.split('.').pop();
             const fileName = `${userId}/${Date.now()}.${fileExt}`;
-            const uploadUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://xnbuuekgtilkdyuznxef.supabase.co'}/storage/v1/object/product-images/${fileName}`;
+            const uploadUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/product-images/${fileName}`;
 
             const xhr = new XMLHttpRequest();
             xhr.open('POST', uploadUrl, true);
 
-            xhr.setRequestHeader('apikey', 'sb_publishable_B-yUEgelsXbjb_8fxKmzoQ_oyUzy4KV');
+            xhr.setRequestHeader('apikey', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
             if (token) {
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`);
             }
@@ -138,7 +138,7 @@ export default function ProductsPage() {
 
             xhr.onload = () => {
                 if (xhr.status === 200 || xhr.status === 201) {
-                    const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://xnbuuekgtilkdyuznxef.supabase.co'}/storage/v1/object/public/product-images/${fileName}`;
+                    const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/${fileName}`;
                     resolve(publicUrl);
                 } else {
                     reject(new Error('Upload failed'));

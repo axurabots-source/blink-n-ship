@@ -661,14 +661,8 @@ export default function OrdersPage() {
             return;
         }
 
-        // Optimistic UI: immediately move selected drafts to booked
         const selectedIds = new Set(selectedDrafts);
-        const now = new Date().toISOString();
-        setOrders((prev) => prev.map((o) => selectedIds.has(o.id) ? { ...o, status: 'booked', bookedAt: now, trackingNumber: o.trackingNumber || 'booking...' } : o));
-        setSelectedDrafts(new Set());
-        setActiveTab('booked');
 
-        // Process in background
         setBooking(true);
         try {
             const res = await fetch('/api/orders/book', {
@@ -688,6 +682,11 @@ export default function OrdersPage() {
             }
             await refresh();
             await loadProducts();
+            // Only switch tab & clear selection if at least one order booked successfully
+            if (failed.length < selectedIds.size) {
+                setSelectedDrafts(new Set());
+                setActiveTab('booked');
+            }
         } catch (err: any) {
             setError(err.message);
         } finally {

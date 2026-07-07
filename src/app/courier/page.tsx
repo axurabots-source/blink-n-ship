@@ -35,9 +35,25 @@ export default function CourierDashboard() {
     const [recentErrors, setRecentErrors] = useState<any[]>([]);
     const [lastSync, setLastSync] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+
+    async function fetchCourierDashboard() {
+        try {
+            const res = await fetch('/api/courier/dashboard');
+            const data = await res.json();
+            if (data.stats) setStats(data.stats);
+            if (data.recentShipments) setRecentShipments(data.recentShipments);
+            if (data.recentErrors) setRecentErrors(data.recentErrors);
+            if (data.lastSync) setLastSync(data.lastSync);
+            
+            if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
+            (window as any).__BNS_CACHE__.courierDashboard = data;
+        } catch (e) {
+            console.error('Failed to load courier dashboard:', e);
+        }
+    }
 
     useEffect(() => {
-        // Load from memory cache instantly
         const cache = (window as any).__BNS_CACHE__;
         if (cache && cache.courierDashboard) {
             const cd = cache.courierDashboard;
@@ -45,26 +61,19 @@ export default function CourierDashboard() {
             if (cd.recentShipments) setRecentShipments(cd.recentShipments);
             if (cd.recentErrors) setRecentErrors(cd.recentErrors);
             if (cd.lastSync) setLastSync(cd.lastSync);
-            setLoading(false);
         }
 
-        fetch('/api/courier/dashboard')
-            .then(r => r.json())
-            .then(data => {
-                if (data.stats) setStats(data.stats);
-                if (data.recentShipments) setRecentShipments(data.recentShipments);
-                if (data.recentErrors) setRecentErrors(data.recentErrors);
-                if (data.lastSync) setLastSync(data.lastSync);
-                
-                // Update cache
-                if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
-                (window as any).__BNS_CACHE__.courierDashboard = data;
-            })
-            .catch(() => {})
-            .finally(() => {
-                setLoading(false);
-            });
+        fetchCourierDashboard().finally(() => setLoading(false));
+
+        const interval = setInterval(fetchCourierDashboard, 30000);
+        return () => clearInterval(interval);
     }, []);
+
+    async function handleRefresh() {
+        setRefreshing(true);
+        await fetchCourierDashboard();
+        setRefreshing(false);
+    }
 
     if (loading && !stats) {
         return (
@@ -75,7 +84,7 @@ export default function CourierDashboard() {
                         <div key={i} style={{ height: '120px', background: T.card, border: `1px solid ${T.border}`, borderRadius: '12px', animation: 'pulse 1.5s infinite' }} />
                     ))}
                 </div>
-                <style>{`@keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }`}</style>
+                <style>{`@keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } } .bns-spin { animation: spin 0.8s linear infinite; } @keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
             </div>
         );
     }
@@ -95,17 +104,44 @@ export default function CourierDashboard() {
             }}
             className="bns-page"
         >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }} className="bns-header">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '12px' }} className="bns-header">
                 <div>
                     <h1 style={{ fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: '6px' }}>Courier Integration</h1>
                     <p style={{ color: T.muted, fontSize: '0.875rem' }} className="bns-subtext">Manage operational parameters, live tracking, and integrations.</p>
                 </div>
-                {lastSync && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: T.muted }}>
-                        <RefreshCw size={14} />
-                        <span>Last sync: {new Date(lastSync.completedAt || lastSync.startedAt).toLocaleString()}</span>
-                    </div>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button
+                        onClick={handleRefresh}
+                        disabled={refreshing}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '6px 14px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            color: T.accent,
+                            background: T.accentLight,
+                            border: '1px solid #f0d4c8',
+                            borderRadius: 8,
+                            cursor: refreshing ? 'not-allowed' : 'pointer',
+                            opacity: refreshing ? 0.6 : 1,
+                            transition: 'all 0.15s ease',
+                            whiteSpace: 'nowrap',
+                        }}
+                        onMouseEnter={(e) => { if (!refreshing) e.currentTarget.style.background = '#fce8df'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = T.accentLight; }}
+                    >
+                        <RefreshCw size={14} className={refreshing ? 'bns-spin' : ''} />
+                        {refreshing ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                    {lastSync && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: T.muted }}>
+                            <RefreshCw size={14} />
+                            <span>Last sync: {new Date(lastSync.completedAt || lastSync.startedAt).toLocaleString()}</span>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Stats Row */}

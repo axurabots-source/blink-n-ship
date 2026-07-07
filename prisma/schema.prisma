@@ -17,23 +17,32 @@ model Profile {
   businessName     String?  @map("business_name")
   accountType      String   @map("account_type")
   flashipConnected Boolean  @default(false) @map("flaship_connected")
+  ownerName        String?  @map("owner_name")
+  email            String?
+  phone            String?
+  address          String?
+  logoUrl          String?  @map("logo_url")
+  website          String?
   createdAt        DateTime @default(now()) @map("created_at")
 
-  courierAccounts       CourierAccount[]
-  courierAccountMeta    CourierAccountMetadata[]
-  courierSettings       CourierSettings?
-  courierCompanies      CourierCompany[]
-  pickupLocations       PickupLocation[]
-  serviceTypes          ServiceType[]
-  operationalCities     OperationalCity[]
-  rateCards             RateCard[]
-  shipments             Shipment[]
-  loadsheets            Loadsheet[]
-  syncLogs              SyncLog[]
-  apiLogs               ApiLog[]
-  activityLogs          CourierActivityLog[]
-  products              Product[]
-  orders                Order[]
+  courierAccounts          CourierAccount[]
+  courierAccountMeta       CourierAccountMetadata[]
+  courierSettings          CourierSettings?
+  courierCompanies         CourierCompany[]
+  pickupLocations          PickupLocation[]
+  serviceTypes             ServiceType[]
+  operationalCities        OperationalCity[]
+  rateCards                RateCard[]
+  shipments                Shipment[]
+  loadsheets               Loadsheet[]
+  syncLogs                 SyncLog[]
+  apiLogs                  ApiLog[]
+  activityLogs             CourierActivityLog[]
+  products                 Product[]
+  orders                   Order[]
+  teamMembers              TeamMember[]
+  notificationPreferences  NotificationPreference?
+  businessActivityLogs     ActivityLog[]
 
   @@map("profiles")
 }
@@ -567,4 +576,116 @@ model Order {
   @@index([status])
   @@index([trackingNumber])
   @@map("orders")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEAM MANAGEMENT — ENTERPRISE PERMISSION SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+
+model TeamMember {
+  id            String    @id @default(uuid()) @db.Uuid
+  ownerId       String    @map("owner_id") @db.Uuid
+  supabaseId    String?   @unique @map("supabase_id")
+  email         String
+  name          String
+  phone         String?
+  role          String    @default("employee")
+  status        String    @default("invited") // invited | active | suspended
+  invitedAt     DateTime  @default(now()) @map("invited_at")
+  joinedAt      DateTime? @map("joined_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  owner       Profile                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  permissions TeamMemberPermission[]
+
+  @@index([ownerId])
+  @@index([email])
+  @@map("team_members")
+}
+
+model TeamMemberPermission {
+  id               String  @id @default(uuid()) @db.Uuid
+  memberId         String  @map("member_id") @db.Uuid
+  module           String  // dashboard | orders | products | ledger | settings
+  canView          Boolean @default(false) @map("can_view")
+  canViewFinancial Boolean @default(false) @map("can_view_financial")
+  canCreate        Boolean @default(false) @map("can_create")
+  canRead          Boolean @default(false) @map("can_read")
+  canUpdate        Boolean @default(false) @map("can_update")
+  canDelete        Boolean @default(false) @map("can_delete")
+
+  member TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, module])
+  @@map("team_member_permissions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATION PREFERENCES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model NotificationPreference {
+  id               String   @id @default(uuid()) @db.Uuid
+  ownerId          String   @unique @map("owner_id") @db.Uuid
+  orderBooked      Boolean  @default(true) @map("order_booked")
+  orderDelivered   Boolean  @default(true) @map("order_delivered")
+  orderReturned    Boolean  @default(true) @map("order_returned")
+  bookingFailed    Boolean  @default(true) @map("booking_failed")
+  lowStock         Boolean  @default(true) @map("low_stock")
+  employeeLogin    Boolean  @default(true) @map("employee_login")
+  permissionChange Boolean @default(true) @map("permission_change")
+  dailySummary     Boolean  @default(false) @map("daily_summary")
+  weeklySummary    Boolean  @default(false) @map("weekly_summary")
+  monthlySummary   Boolean  @default(false) @map("monthly_summary")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  owner Profile @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER SESSIONS (browser/device tracking)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UserSession {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id")
+  browserInfo  String?   @map("browser_info")
+  os           String?
+  device       String?
+  ipAddress    String?   @map("ip_address")
+  isCurrent    Boolean   @default(false) @map("is_current")
+  lastActiveAt DateTime  @default(now()) @map("last_active_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([userId, lastActiveAt])
+  @@map("user_sessions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTIVITY LOGS (business audit trail — separate from courier logs)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ActivityLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerId     String   @map("owner_id") @db.Uuid
+  userId      String   @map("user_id")
+  userName    String   @map("user_name")
+  userEmail   String?  @map("user_email")
+  action      String   // created | updated | deleted | invited | suspended | activated | booked | login | etc.
+  module      String   // team | orders | products | settings | ledger | dashboard
+  description String
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  owner Profile @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([ownerId, module])
+  @@index([ownerId, createdAt])
+  @@map("activity_logs")
 }

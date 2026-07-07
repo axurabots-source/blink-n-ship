@@ -42,7 +42,7 @@ export async function POST(request: Request) {
                 for (const shipment of activeShipments) {
                     if (!shipment.trackingNumber) continue;
                     try {
-                        await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('supabase.co', '') || ''}api/courier/track`, {
+                        await fetch(`/api/courier/track`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ trackingNumber: shipment.trackingNumber }),
