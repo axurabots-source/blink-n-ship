@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Key, ShieldCheck, RefreshCw, AlertCircle, ArrowRight, CheckCircle2, Edit2, Check, X } from 'lucide-react';
+import { Key, ShieldCheck, RefreshCw, AlertCircle, ArrowRight, CheckCircle2, Info, ExternalLink } from 'lucide-react';
+import { useToast } from "@/components/Toast";
 
 const T = {
     bg: '#ffffff',
@@ -16,21 +17,16 @@ const T = {
 };
 
 export default function ConnectCourier() {
+    const { toast } = useToast();
     const [apiKey, setApiKey] = useState('');
     const [loading, setLoading] = useState(false);
-    const [step, setStep] = useState(1); // 1: Input key, 2: Syncing details, 3: Success
+    const [step, setStep] = useState(1); // 1: Input key + confirmation, 2: Syncing, 3: Success (permanent)
     const [error, setError] = useState<string | null>(null);
-    const [syncProgress, setSyncProgress] = useState<string[]>([]);
     const [accountInfo, setAccountInfo] = useState<any>(null);
-
-    // Editing states
-    const [editingField, setEditingField] = useState<'name' | 'balance' | null>(null);
-    const [editValue, setEditValue] = useState('');
 
     const [progressPercent, setProgressPercent] = useState(0);
     const [currentProgressText, setCurrentProgressText] = useState('Securing API credentials connection...');
     const [checkingAuth, setCheckingAuth] = useState(true);
-    const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
     // Fetch existing connection on mount
     useEffect(() => {
@@ -43,12 +39,11 @@ export default function ConnectCourier() {
                     setStep(3);
                 }
             })
-            .catch(() => {})
+            .catch(() => toast('error', 'Failed to load data'))
             .finally(() => {
                 setCheckingAuth(false);
             });
     }, []);
-
 
     async function handleConnect(e: React.FormEvent) {
         e.preventDefault();
@@ -60,9 +55,8 @@ export default function ConnectCourier() {
         setProgressPercent(0);
         setCurrentProgressText('Securing API credentials connection...');
 
-        // Start progress percentage simulation
         const startTime = Date.now();
-        const duration = 4000; // Expected approximate connect time
+        const duration = 4000;
         const interval = setInterval(() => {
             const elapsed = Date.now() - startTime;
             const percentage = Math.min(Math.floor((elapsed / duration) * 95), 95);
@@ -101,23 +95,6 @@ export default function ConnectCourier() {
             clearInterval(interval);
             setError(err.message);
             setStep(1);
-        } finally {
-            setLoading(false);
-        }
-    }
-
-
-    async function handleDisconnect() {
-        setLoading(true);
-        setConfirmDisconnect(false);
-        try {
-            const res = await fetch('/api/courier/account', { method: 'DELETE' });
-            if (!res.ok) throw new Error('Failed to disconnect');
-            setStep(1);
-            setApiKey('');
-            setAccountInfo(null);
-        } catch (e: any) {
-            alert(e.message || 'Failed to disconnect');
         } finally {
             setLoading(false);
         }
@@ -169,6 +146,22 @@ export default function ConnectCourier() {
                             </div>
                         )}
 
+                        {/* Permanent Binding Warning */}
+                        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', padding: '14px 16px', marginBottom: '20px', fontSize: '0.8rem', color: '#9a3412', lineHeight: 1.6 }}>
+                            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                                <Info size={18} style={{ flexShrink: 0, marginTop: 1, color: '#ea580c' }} />
+                                <div>
+                                    <strong style={{ fontSize: '0.82rem' }}>This connection is permanent.</strong>
+                                    <p style={{ margin: '4px 0 0', fontSize: '0.78rem' }}>
+                                        Once connected, this Flaship account will be permanently bound to your Blink N Ship account.
+                                        You will not be able to disconnect, replace, or switch to another Flaship account later.
+                                        This can only be changed through official support by permanently deleting your Blink N Ship account.
+                                    </p>
+                                </div>
+                            </div>
+                            
+                        </div>
+
                         <form onSubmit={handleConnect}>
                             <div style={{ marginBottom: '20px' }}>
                                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>API Token Key</label>
@@ -187,7 +180,7 @@ export default function ConnectCourier() {
                                 disabled={loading || !apiKey.trim()}
                                 style={{ width: '100%', padding: '12px', background: T.accent, color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                             >
-                                {loading ? <RefreshCw size={16} className="animate-spin" /> : <><span>Verify and Connect</span><ArrowRight size={16} /></>}
+                                {loading ? <RefreshCw size={16} className="animate-spin" /> : <><span>Verify and Connect Permanently</span><ArrowRight size={16} /></>}
                             </button>
                         </form>
                     </div>
@@ -198,22 +191,21 @@ export default function ConnectCourier() {
                         <RefreshCw size={36} color={T.accent} style={{ animation: 'spin 2s linear infinite', marginBottom: '24px' }} />
                         <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '8px' }}>Syncing Database Reference Data</h3>
                         <p style={{ fontSize: '0.8rem', color: T.muted, marginBottom: '28px' }}>Connecting to Flaship Pakistan gateway endpoints...</p>
-                        
-                        {/* Progress Bar & Percentage Counter */}
+
                         <div style={{ maxWidth: '360px', margin: '0 auto 24px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '0.82rem', fontWeight: 600 }}>
                                 <span style={{ color: T.muted }}>Progress</span>
                                 <span style={{ color: T.accent, fontSize: '0.9rem', fontWeight: 700 }}>{progressPercent}%</span>
                             </div>
                             <div style={{ width: '100%', height: '8px', backgroundColor: '#e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
-                                <div 
-                                    style={{ 
-                                        width: `${progressPercent}%`, 
-                                        height: '100%', 
-                                        backgroundColor: T.accent, 
+                                <div
+                                    style={{
+                                        width: `${progressPercent}%`,
+                                        height: '100%',
+                                        backgroundColor: T.accent,
                                         borderRadius: '4px',
                                         transition: 'width 0.1s ease-out'
-                                    }} 
+                                    }}
                                 />
                             </div>
                         </div>
@@ -233,40 +225,65 @@ export default function ConnectCourier() {
                             </div>
                             <div>
                                 <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Active Connection Secured</h3>
-                                <p style={{ fontSize: '0.8rem', color: T.muted }}>Blink N Ship is connected to Flaship Pakistan.</p>
+                                <p style={{ fontSize: '0.8rem', color: T.muted }}>Blink N Ship is permanently connected to Flaship Pakistan.</p>
                             </div>
                         </div>
 
-                        {!confirmDisconnect ? (
-                            <button
-                                onClick={() => setConfirmDisconnect(true)}
-                                style={{ width: '100%', padding: '12px', background: 'none', border: `1px solid ${T.border}`, color: '#ef4444', borderRadius: '8px', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', transition: 'all 0.15s ease' }}
-                            >
-                                Disconnect Gateway Token
-                            </button>
-                        ) : (
-                            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '16px', marginTop: '12px' }}>
-                                <p style={{ fontSize: '0.82rem', color: '#dc2626', fontWeight: 600, margin: '0 0 12px 0', textAlign: 'center' }}>
-                                    Are you sure you want to disconnect? This will halt courier synchronization.
-                                </p>
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    <button
-                                        onClick={handleDisconnect}
-                                        disabled={loading}
-                                        style={{ flex: 1, padding: '10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
-                                    >
-                                        {loading ? 'Disconnecting...' : 'Yes, Disconnect'}
-                                    </button>
-                                    <button
-                                        onClick={() => setConfirmDisconnect(false)}
-                                        disabled={loading}
-                                        style={{ flex: 1, padding: '10px', background: '#fff', border: `1px solid ${T.border}`, color: T.muted, borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
-                                    >
-                                        Cancel
-                                    </button>
+                        {accountInfo && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: '0.82rem' }}>
+                                    <span style={{ color: T.muted }}>Account</span>
+                                    <span style={{ fontWeight: 600, color: T.fg }}>{accountInfo.accountName || 'Flaship Account'}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: '0.82rem' }}>
+                                    <span style={{ color: T.muted }}>Provider</span>
+                                    <span style={{ fontWeight: 600, color: T.fg }}>Flaship Pakistan</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: '0.82rem' }}>
+                                    <span style={{ color: T.muted }}>Connected Since</span>
+                                    <span style={{ fontWeight: 600, color: T.fg }}>{new Date().toLocaleDateString('en-PK', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                                 </div>
                             </div>
                         )}
+
+                        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '14px 16px', fontSize: '0.8rem', color: '#166534', lineHeight: 1.6 }}>
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                                <CheckCircle2 size={18} style={{ flexShrink: 0, marginTop: 1, color: '#16a34a' }} />
+                                <div>
+                                    <strong style={{ fontSize: '0.82rem' }}>Permanently bound</strong>
+                                    <p style={{ margin: '4px 0 0', fontSize: '0.78rem' }}>
+                                        This Flaship account is now permanently linked to your Blink N Ship account.
+                                        You can now access all CRM features including orders, inventory, ledger,
+                                        dashboard, and reports. The connection is secure and cannot be changed from the UI.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ marginTop: 24, textAlign: 'center' }}>
+                            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                                <a
+                                    href="/dashboard"
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px',
+                                        background: T.accent, color: '#fff', border: 'none', borderRadius: '8px',
+                                        fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', textDecoration: 'none',
+                                    }}
+                                >
+                                    Go to Dashboard
+                                </a>
+                                <a
+                                    href="/orders"
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px',
+                                        background: T.bg, color: T.fg, border: `1px solid ${T.border}`, borderRadius: '8px',
+                                        fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', textDecoration: 'none',
+                                    }}
+                                >
+                                    Start Booking
+                                </a>
+                            </div>
+                        </div>
                     </div>
                 )}
                 </>
@@ -275,4 +292,3 @@ export default function ConnectCourier() {
         </motion.div>
     );
 }
-

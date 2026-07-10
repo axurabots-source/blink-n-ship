@@ -21,14 +21,20 @@ import {
     Globe,
     DollarSign,
     Package,
+    Eye,
 } from 'lucide-react';
 
-const mainLinks = [
-    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/orders', label: 'Booking', icon: PackageSearch },
-    { href: '/products', label: 'Inventory', icon: Boxes },
-    { href: '/ledger', label: 'Ledger', icon: BookOpen },
-];
+function useMainLinks(accountType: string | null) {
+    const links = [
+        { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { href: '/orders', label: 'Booking', icon: PackageSearch },
+        { href: '/ledger', label: 'Ledger', icon: BookOpen },
+    ];
+    if (accountType === 'inventory_holder') {
+        links.splice(2, 0, { href: '/products', label: 'Inventory', icon: Boxes });
+    }
+    return links;
+}
 
 const courierSubLinks = [
     { href: '/courier', label: 'Overview', icon: LayoutDashboard },
@@ -44,19 +50,14 @@ export default function AppSidebar() {
     const pathname = usePathname();
     const router = useRouter();
     const supabase = createClient();
-    const [hoveredLink, setHoveredLink] = useState<string | null>(null);
-    const [logoutHovered, setLogoutHovered] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
     const [accountType, setAccountType] = useState<string | null>(null);
 
-    // Group Courier state
     const isCourierRoute = pathname.startsWith('/courier');
     const [courierOpen, setCourierOpen] = useState(isCourierRoute);
 
     useEffect(() => {
-        if (isCourierRoute) {
-            setCourierOpen(true);
-        }
+        if (isCourierRoute) setCourierOpen(true);
     }, [pathname, isCourierRoute]);
 
     useEffect(() => {
@@ -71,7 +72,7 @@ export default function AppSidebar() {
                     localStorage.setItem('bns_account_type', b.profile.accountType);
                 }
             })
-            .catch(() => {});
+            .catch(() => {/* profile fetch is non-critical */});
     }, []);
 
     useEffect(() => {
@@ -96,9 +97,7 @@ export default function AppSidebar() {
             background: '#0a0a0a',
         }}>
             {/* Title / Logo */}
-            <div style={{
-                padding: '24px 20px 16px',
-            }}>
+            <div style={{ padding: '24px 20px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <motion.div
                         style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
@@ -110,7 +109,7 @@ export default function AppSidebar() {
                                 hover: { x: [0, 6, -2, 0], transition: { duration: 0.6, ease: 'easeInOut' } }
                             }}
                         >
-                            <Truck size={18} color="#CC785C" style={{ transform: 'scaleX(-1)' }} />
+                            <Truck size={18} color="#CC785C" style={{ transform: 'scaleX(-1)' }} aria-hidden="true" />
                         </motion.div>
                         <h1 style={{
                             color: '#ffffff',
@@ -124,10 +123,11 @@ export default function AppSidebar() {
                     </motion.div>
                     <button
                         onClick={() => setMobileOpen(false)}
+                        aria-label="Close navigation menu"
                         style={{ background: 'none', border: 'none', color: '#a3a3a3', cursor: 'pointer', display: 'none' }}
                         className="mobile-close-btn"
                     >
-                        <X size={18} />
+                        <X size={18} aria-hidden="true" />
                     </button>
                 </div>
                 {accountType && (
@@ -159,17 +159,16 @@ export default function AppSidebar() {
                 flexDirection: 'column',
                 gap: '4px',
             }}>
-                {mainLinks.map((link) => {
+                {useMainLinks(accountType).map((link) => {
                     const Icon = link.icon;
                     const active = pathname === link.href;
-                    const isHovered = hoveredLink === link.href;
 
                     return (
                         <Link
                             key={link.href}
                             href={link.href}
-                            onMouseEnter={() => setHoveredLink(link.href)}
-                            onMouseLeave={() => setHoveredLink(null)}
+                            aria-current={active ? 'page' : undefined}
+                            className="sidebar-link"
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -180,28 +179,46 @@ export default function AppSidebar() {
                                 fontWeight: 500,
                                 textDecoration: 'none',
                                 transition: 'all 0.15s ease',
-                                background: active 
-                                    ? '#CC785C' 
-                                    : isHovered 
-                                        ? 'rgba(255, 255, 255, 0.05)' 
-                                        : 'transparent',
-                                color: active 
-                                    ? '#ffffff' 
-                                    : isHovered 
-                                        ? '#ffffff' 
-                                        : '#a3a3a3',
+                                background: active ? '#CC785C' : 'transparent',
+                                color: active ? '#ffffff' : '#a3a3a3',
                              }}
                         >
-                            <Icon size={16} strokeWidth={active ? 2.5 : 2} />
+                            <Icon size={16} strokeWidth={active ? 2.5 : 2} aria-hidden="true" />
                             {link.label}
                         </Link>
                     );
                 })}
 
+                {/* Tracking — always visible, sits above Courier */}
+                <Link
+                    href="/tracking"
+                    aria-current={pathname === '/tracking' ? 'page' : undefined}
+                    className="sidebar-link"
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '10px 16px',
+                        borderRadius: '8px',
+                        fontSize: '0.875rem',
+                        fontWeight: 500,
+                        textDecoration: 'none',
+                        transition: 'all 0.15s ease',
+                        background: pathname === '/tracking' ? '#CC785C' : 'transparent',
+                        color: pathname === '/tracking' ? '#ffffff' : '#a3a3a3',
+                    }}
+                >
+                    <Eye size={16} strokeWidth={pathname === '/tracking' ? 2.5 : 2} aria-hidden="true" />
+                    Tracking
+                </Link>
+
                 {/* Collapsible Courier Group */}
                 <div style={{ display: 'flex', flexDirection: 'column', marginTop: '8px' }}>
                     <button
                         onClick={() => setCourierOpen(!courierOpen)}
+                        aria-expanded={courierOpen}
+                        aria-controls="courier-sublinks"
+                        className="sidebar-courier-btn"
                         style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -220,11 +237,12 @@ export default function AppSidebar() {
                         }}
                     >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <Truck size={16} strokeWidth={2} />
+                            <Truck size={16} strokeWidth={2} aria-hidden="true" />
                             <span>Courier</span>
                         </div>
                         <ChevronDown 
                             size={14} 
+                            aria-hidden="true"
                             style={{ 
                                 transform: courierOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                                 transition: 'transform 0.2s ease'
@@ -235,6 +253,7 @@ export default function AppSidebar() {
                     <AnimatePresence initial={false}>
                         {courierOpen && (
                             <motion.div
+                                id="courier-sublinks"
                                 initial={{ height: 0, opacity: 0 }}
                                 animate={{ height: 'auto', opacity: 1 }}
                                 exit={{ height: 0, opacity: 0 }}
@@ -253,14 +272,13 @@ export default function AppSidebar() {
                                     {courierSubLinks.map((subLink) => {
                                         const SubIcon = subLink.icon;
                                         const subActive = pathname === subLink.href;
-                                        const subHovered = hoveredLink === subLink.href;
 
                                         return (
                                             <Link
                                                 key={subLink.href}
                                                 href={subLink.href}
-                                                onMouseEnter={() => setHoveredLink(subLink.href)}
-                                                onMouseLeave={() => setHoveredLink(null)}
+                                                aria-current={subActive ? 'page' : undefined}
+                                                className="sidebar-link"
                                                 style={{
                                                     display: 'flex',
                                                     alignItems: 'center',
@@ -271,19 +289,11 @@ export default function AppSidebar() {
                                                     fontWeight: 500,
                                                     textDecoration: 'none',
                                                     transition: 'all 0.15s ease',
-                                                    background: subActive 
-                                                        ? '#CC785C' 
-                                                        : subHovered 
-                                                            ? 'rgba(255, 255, 255, 0.04)' 
-                                                            : 'transparent',
-                                                    color: subActive 
-                                                        ? '#ffffff' 
-                                                        : subHovered 
-                                                            ? '#ffffff' 
-                                                            : '#8a8a8a',
+                                                    background: subActive ? '#CC785C' : 'transparent',
+                                                    color: subActive ? '#ffffff' : '#8a8a8a',
                                                 }}
                                             >
-                                                <SubIcon size={13} strokeWidth={subActive ? 2.2 : 1.8} />
+                                                <SubIcon size={13} strokeWidth={subActive ? 2.2 : 1.8} aria-hidden="true" />
                                                 {subLink.label}
                                             </Link>
                                         );
@@ -300,6 +310,8 @@ export default function AppSidebar() {
                 <Link
                     href="/settings"
                     onClick={() => setMobileOpen(false)}
+                    aria-current={pathname === '/settings' ? 'page' : undefined}
+                    className="sidebar-link"
                     style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -313,10 +325,8 @@ export default function AppSidebar() {
                         background: pathname === '/settings' ? '#CC785C' : 'transparent',
                         color: pathname === '/settings' ? '#ffffff' : '#a3a3a3',
                     }}
-                    onMouseEnter={(e) => { if (pathname !== '/settings') { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#ffffff'; } }}
-                    onMouseLeave={(e) => { if (pathname !== '/settings') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#a3a3a3'; } }}
                 >
-                    <Settings size={16} strokeWidth={pathname === '/settings' ? 2.5 : 2} />
+                    <Settings size={16} strokeWidth={pathname === '/settings' ? 2.5 : 2} aria-hidden="true" />
                     Settings
                 </Link>
             </div>
@@ -330,8 +340,7 @@ export default function AppSidebar() {
             }}>
                 <button
                     onClick={handleLogout}
-                    onMouseEnter={() => setLogoutHovered(true)}
-                    onMouseLeave={() => setLogoutHovered(false)}
+                    className="sidebar-link sidebar-logout"
                     style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -341,15 +350,15 @@ export default function AppSidebar() {
                         fontSize: '0.875rem',
                         fontWeight: 500,
                         width: '100%',
-                        background: logoutHovered ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
-                        color: logoutHovered ? '#ef4444' : '#a3a3a3',
+                        background: 'transparent',
+                        color: '#a3a3a3',
                         border: 'none',
                         textAlign: 'left',
                         cursor: 'pointer',
                         transition: 'all 0.15s ease',
                     }}
                 >
-                    <LogOut size={16} strokeWidth={2} />
+                    <LogOut size={16} strokeWidth={2} aria-hidden="true" />
                     Logout
                 </button>
             </div>
@@ -365,6 +374,21 @@ export default function AppSidebar() {
                 }
                 .mobile-toggle-btn {
                     display: none;
+                }
+                .sidebar-link:hover {
+                    background: rgba(255, 255, 255, 0.05) !important;
+                    color: #ffffff !important;
+                }
+                .sidebar-link[aria-current="page"]:hover {
+                    background: #CC785C !important;
+                    color: #ffffff !important;
+                }
+                .sidebar-courier-btn:hover {
+                    background: rgba(255, 255, 255, 0.05) !important;
+                }
+                .sidebar-logout:hover {
+                    background: rgba(239, 68, 68, 0.1) !important;
+                    color: #ef4444 !important;
                 }
                 @media (max-width: 768px) {
                     main {
@@ -388,6 +412,8 @@ export default function AppSidebar() {
                         cursor: pointer;
                         align-items: center;
                         justify-content: center;
+                        min-width: 44px;
+                        min-height: 44px;
                     }
                     .mobile-close-btn {
                         display: block !important;
@@ -410,12 +436,14 @@ export default function AppSidebar() {
             <button 
                 onClick={() => setMobileOpen(true)}
                 className="mobile-toggle-btn"
+                aria-label="Open navigation menu"
             >
-                <Menu size={20} />
+                <Menu size={20} aria-hidden="true" />
             </button>
 
             <aside 
                 className="desktop-sidebar"
+                aria-label="Main navigation"
                 style={{
                     width: '240px',
                     height: '100vh',
@@ -441,6 +469,7 @@ export default function AppSidebar() {
                             animate={{ opacity: 0.5 }}
                             exit={{ opacity: 0 }}
                             onClick={() => setMobileOpen(false)}
+                            role="presentation"
                             style={{
                                 position: 'fixed',
                                 inset: 0,
@@ -454,6 +483,9 @@ export default function AppSidebar() {
                             animate={{ x: 0 }}
                             exit={{ x: '-100%' }}
                             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label="Navigation menu"
                             style={{
                                 width: '240px',
                                 height: '100vh',

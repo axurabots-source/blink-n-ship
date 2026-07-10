@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { sanitizeString, sanitizeOptionalString, isValidEmail } from '@/lib/validation';
+import { apiError } from '@/lib/api-error';
+import { rateLimit, Limit } from '@/lib/rate-limit';
 
 export async function GET() {
   try {
@@ -14,7 +17,7 @@ export async function GET() {
     const { id, ...rest } = profile;
     return NextResponse.json({ profile: { id, ...rest } });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return apiError(err);
   }
 }
 
@@ -24,15 +27,27 @@ export async function PATCH(request: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
+    const rl = rateLimit('profile', user.id, Limit.general);
+    if (!rl.success) {
+      return NextResponse.json({ error: 'Too many requests. Please wait before trying again.' }, { status: 429 });
+    }
+
     const body = await request.json();
-    const allowedFields = ['businessName', 'ownerName', 'email', 'phone', 'address', 'logoUrl', 'website'];
     const updates: Record<string, any> = {};
 
-    for (const key of allowedFields) {
-      if (body[key] !== undefined) {
-        updates[key] = body[key];
+    if (body.businessName !== undefined) updates.businessName = sanitizeString(body.businessName, 200);
+    if (body.ownerName !== undefined) updates.ownerName = sanitizeString(body.ownerName, 200);
+    if (body.email !== undefined) {
+      const clean = sanitizeString(body.email);
+      if (!isValidEmail(clean)) {
+        return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
       }
+      updates.email = clean;
     }
+    if (body.phone !== undefined) updates.phone = sanitizeOptionalString(body.phone, 20);
+    if (body.address !== undefined) updates.address = sanitizeString(body.address, 500);
+    if (body.logoUrl !== undefined) updates.logoUrl = sanitizeString(body.logoUrl, 500);
+    if (body.website !== undefined) updates.website = sanitizeString(body.website, 200);
 
     const profile = await prisma.profile.update({
       where: { id: user.id },
@@ -41,6 +56,6 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ profile });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return apiError(err);
   }
 }

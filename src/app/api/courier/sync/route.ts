@@ -3,12 +3,19 @@ import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { logActivity } from '@/lib/courierHelpers';
 import { syncCourierData } from '@/lib/sync-service';
+import { apiError } from '@/lib/api-error';
+import { rateLimit, Limit } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
     try {
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
+        const rl = rateLimit('sync', user.id, Limit.sync);
+        if (!rl.success) {
+            return NextResponse.json({ error: 'Too many sync requests. Please wait before trying again.' }, { status: 429 });
+        }
 
         const body = await request.json().catch(() => ({}));
         const types: string[] = body.types || ['companies', 'pickup_locations', 'cities', 'rate_cards', 'tracking'];
@@ -66,6 +73,6 @@ export async function POST(request: Request) {
             totalSkipped
         });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

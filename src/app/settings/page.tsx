@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useToast } from '@/components/Toast';
 import {
   Settings, Users, Bell, Shield, Clock, Building2, Mail, Phone, MapPin,
   Globe, User, Lock, LogOut, Plus, X, Search, ChevronDown, Check,
@@ -38,13 +39,9 @@ const PERMISSION_MODULES = [
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('profile');
-  const [loading, setLoading] = useState(true);
   const [accountType, setAccountType] = useState('');
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  useEffect(() => { const timer = setTimeout(() => setLoading(false), 200); return () => clearTimeout(timer); }, []);
-
-  const renderTabContent = () => {
+  const renderTabContent = useMemo(() => {
     switch (activeTab) {
       case 'profile': return <CompanyProfileTab />;
       case 'team': return <TeamManagementTab />;
@@ -53,17 +50,7 @@ export default function SettingsPage() {
       case 'activity': return <ActivityLogsTab />;
       default: return null;
     }
-  };
-
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.bg, gap: 12 }}>
-        <div style={{ width: 32, height: 32, borderRadius: '50%', border: `3px solid ${T.accentLight}`, borderTopColor: T.accent, animation: 'bns-spin 0.6s linear infinite' }} />
-        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: T.fg }}>Loading settings...</span>
-        <style>{`@keyframes bns-spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-  }
+  }, [activeTab]);
 
   return (
     <div style={{ padding: '32px 40px', minHeight: '100vh', background: T.bg, fontFamily: 'var(--font-geist-sans), sans-serif' }}>
@@ -103,7 +90,7 @@ export default function SettingsPage() {
             })}
           </div>
           <div style={{ padding: 28 }}>
-            {renderTabContent()}
+            {renderTabContent}
           </div>
         </div>
       </div>
@@ -141,12 +128,8 @@ function CompanyProfileTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           businessName: profile.businessName,
-          ownerName: profile.ownerName,
           email: profile.email,
           phone: profile.phone,
-          address: profile.address,
-          logoUrl: profile.logoUrl,
-          website: profile.website,
         }),
       });
       const data = await res.json();
@@ -172,18 +155,24 @@ function CompanyProfileTab() {
 
   const updateField = (key: string, value: string) => setProfile((prev: any) => ({ ...prev, [key]: value }));
 
-  const formRow = (label: string, icon: any, key: string, type = 'text', readOnly = false, placeholder = '') => {
+  function formRow(label: string, icon: any, key: string, type = 'text', readOnly = false, placeholder = '') {
     const Icon = icon;
+    const inputId = `profile-${key}`;
+    const inputModeAttr = type === 'email' ? 'email' as const : type === 'tel' ? 'tel' as const : undefined;
+    const autoCompleteAttr = type === 'email' ? 'email' : type === 'tel' ? 'tel' : key === 'name' ? 'name' : key === 'address' ? 'street-address' : key === 'website' ? 'url' : undefined;
     return (
       <div style={{ marginBottom: 18 }}>
-        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: T.muted, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</label>
+        <label htmlFor={inputId} style={{ fontSize: '0.72rem', fontWeight: 600, color: T.muted, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</label>
         <div style={{ position: 'relative' }}>
-          <Icon size={14} color={T.muted} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+          <Icon size={14} color={T.muted} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} aria-hidden="true" />
           {readOnly ? (
-            <div style={{ padding: '10px 12px 10px 38px', fontSize: '0.85rem', color: T.fg, background: T.inputBg, borderRadius: 10, border: `1px solid ${T.border}`, userSelect: 'none' }}>{profile[key] || '—'}</div>
+            <div id={inputId} style={{ padding: '10px 12px 10px 38px', fontSize: '0.85rem', color: T.fg, background: T.inputBg, borderRadius: 10, border: `1px solid ${T.border}`, userSelect: 'none' }}>{profile[key] || '—'}</div>
           ) : (
             <input
+              id={inputId}
               type={type}
+              inputMode={inputModeAttr}
+              autoComplete={autoCompleteAttr}
               value={profile[key] || ''}
               onChange={e => updateField(key, e.target.value)}
               placeholder={placeholder}
@@ -193,26 +182,18 @@ function CompanyProfileTab() {
         </div>
       </div>
     );
-  };
+  }
 
   return (
     <div>
       <h2 style={{ fontSize: '1rem', fontWeight: 700, color: T.fg, margin: '0 0 4px' }}>Company Profile</h2>
       <p style={{ fontSize: '0.8rem', color: T.muted, margin: '0 0 24px' }}>Manage your business information visible across the platform.</p>
 
-      <div className="bns-profile-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 28px' }}>
-        <div style={{ gridColumn: 'span 2' }}>
-          {formRow('Business Name', Building2, 'businessName', 'text', false, 'Your business name')}
-        </div>
-        {formRow('Business Type', Globe, 'accountType', 'text', true)}
-        {formRow('Owner Name', User, 'ownerName', 'text', false, 'Full name of business owner')}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {formRow('Business Name', Building2, 'businessName', 'text', false, 'Your business name')}
+        {formRow('Account Type', Globe, 'accountType', 'text', true)}
         {formRow('Email Address', Mail, 'email', 'email', false, 'owner@example.com')}
         {formRow('Phone Number', Phone, 'phone', 'tel', false, '+92 300 1234567')}
-        <div style={{ gridColumn: 'span 2' }}>
-          {formRow('Business Address', MapPin, 'address', 'text', false, 'Street, city, postal code')}
-        </div>
-        {formRow('Website', Globe, 'website', 'url', false, 'https://example.com')}
-        {formRow('Logo URL', ExternalLink, 'logoUrl', 'url', false, 'https://example.com/logo.png')}
       </div>
 
       {error && <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#dc2626', fontSize: '0.8rem', marginTop: 16 }}>{error}</div>}
@@ -409,9 +390,9 @@ function InviteForm({ onInvite, onCancel, saving }: { onInvite: (data: any) => v
     <div style={{ padding: 20, background: T.card, borderRadius: 12, border: `1px solid ${T.accent}`, marginBottom: 16 }}>
       <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: T.fg, margin: '0 0 16px' }}>Invite Team Member</h3>
       <div className="bns-invite-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <input placeholder="Full name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
-        <input placeholder="Email address" type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
-        <input placeholder="Phone (optional)" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
+        <input placeholder="Full name" autoComplete="name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
+        <input placeholder="Email address" type="email" inputMode="email" autoComplete="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
+        <input placeholder="Phone (optional)" inputMode="tel" autoComplete="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
         <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg, cursor: 'pointer' }}>
           <option value="employee">Employee</option>
           <option value="manager">Manager</option>
@@ -439,9 +420,9 @@ function EditMemberForm({ member, onSave, onCancel, saving }: { member: any; onS
     <div style={{ padding: 20, background: T.card, borderRadius: 12, border: `1px solid ${T.border}`, marginBottom: 16 }}>
       <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: T.fg, margin: '0 0 16px' }}>Edit Team Member</h3>
       <div className="bns-invite-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <input placeholder="Full name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
-        <input placeholder="Email" type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
-        <input placeholder="Phone" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
+        <input placeholder="Full name" autoComplete="name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
+        <input placeholder="Email" type="email" inputMode="email" autoComplete="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
+        <input placeholder="Phone" inputMode="tel" autoComplete="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg }} />
         <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))} style={{ padding: '10px 12px', fontSize: '0.85rem', border: `1px solid ${T.border}`, borderRadius: 10, outline: 'none', background: T.bg, color: T.fg, cursor: 'pointer' }}>
           <option value="employee">Employee</option>
           <option value="manager">Manager</option>
@@ -541,6 +522,7 @@ function PermissionsForm({ member, onSave, onCancel, saving }: { member: any; on
 }
 
 function NotificationsTab() {
+  const { toast } = useToast();
   const [prefs, setPrefs] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -548,7 +530,7 @@ function NotificationsTab() {
   useEffect(() => {
     fetch('/api/settings/notifications').then(r => r.json()).then(d => {
       if (d.preferences) setPrefs(d.preferences);
-    }).catch(() => {});
+    }).catch(() => setPrefs({}));
   }, []);
 
   const toggle = async (key: string) => {
@@ -561,7 +543,7 @@ function NotificationsTab() {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [key]: updated[key] }),
       });
       setSaved(true); setTimeout(() => setSaved(false), 2000);
-    } catch {} finally { setSaving(false); }
+    } catch { toast('error', 'Failed to save notification preferences'); } finally { setSaving(false); }
   };
 
   if (!prefs) return <div style={{ textAlign: 'center', padding: 40, color: T.muted, fontSize: '0.85rem' }}>Loading...</div>;
@@ -632,6 +614,84 @@ function NotificationsTab() {
   );
 }
 
+function DeleteAccountSection() {
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleDelete = async () => {
+    if (deleteConfirmText !== 'DELETE') return;
+    setDeleting(true); setDeleteError('');
+    try {
+      const res = await fetch('/api/settings/security/delete-account', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete account');
+      window.location.href = '/login';
+    } catch (err: any) {
+      setDeleteError(err.message);
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div style={{ background: '#fef2f2', borderRadius: 10, border: '1px solid #fecaca', padding: 20 }}>
+      <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#dc2626', margin: '0 0 4px' }}>Delete Account</p>
+      <p style={{ fontSize: '0.75rem', color: '#b91c1c', margin: '0 0 4px' }}>
+        Permanently delete your Blink N Ship account and all associated data including:
+        orders, products, courier connection, team members, and settings.
+      </p>
+      <p style={{ fontSize: '0.72rem', color: '#991b1b', margin: '0 0 16px' }}>
+        This action is irreversible. Your courier account binding will also be removed.
+      </p>
+      {!showDelete ? (
+        <button
+          onClick={() => setShowDelete(true)}
+          style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+        >
+          Delete Account
+        </button>
+      ) : (
+        <div>
+          <p style={{ fontSize: '0.78rem', color: '#991b1b', marginBottom: 8, fontWeight: 500 }}>
+            Type <strong>DELETE</strong> to confirm:
+          </p>
+          <input
+            type="text"
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+            placeholder="Type DELETE"
+            style={{ width: '100%', padding: '10px 12px', fontSize: '0.85rem', border: '1px solid #fecaca', borderRadius: 8, outline: 'none', background: '#fff', color: T.fg, boxSizing: 'border-box', marginBottom: 12 }}
+          />
+          {deleteError && <p style={{ fontSize: '0.78rem', color: '#dc2626', marginBottom: 8 }}>{deleteError}</p>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={handleDelete}
+              disabled={deleteConfirmText !== 'DELETE' || deleting}
+              style={{
+                flex: 1, padding: '10px', background: deleteConfirmText === 'DELETE' ? '#dc2626' : '#e5e5e5',
+                color: deleteConfirmText === 'DELETE' ? '#fff' : T.muted, border: 'none', borderRadius: 8,
+                fontWeight: 600, fontSize: '0.8rem', cursor: deleteConfirmText === 'DELETE' && !deleting ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              }}
+            >
+              {deleting ? <Loader2 size={14} className="bns-spin" /> : null}
+              {deleting ? 'Deleting...' : 'Permanently Delete'}
+            </button>
+            <button
+              onClick={() => { setShowDelete(false); setDeleteConfirmText(''); setDeleteError(''); }}
+              disabled={deleting}
+              style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #e5e5e5', color: T.muted, borderRadius: 8, fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SecurityTab() {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
@@ -649,7 +709,7 @@ function SecurityTab() {
   useEffect(() => {
     fetch('/api/settings/security/sessions').then(r => r.json()).then(d => {
       if (d.sessions) setSessions(d.sessions);
-    }).catch(() => {}).finally(() => setSessionsLoading(false));
+    }).catch(() => setSessions([])).finally(() => setSessionsLoading(false));
   }, []);
 
   const handleChangePassword = async () => {
@@ -811,6 +871,8 @@ function SecurityTab() {
           <p style={{ fontSize: '0.85rem', fontWeight: 600, color: T.fg, margin: '0 0 4px' }}>Two-Factor Authentication</p>
           <p style={{ fontSize: '0.75rem', color: T.muted, margin: 0 }}>Architecture prepared for TOTP, SMS, and authenticator app based 2FA. Not yet implemented.</p>
         </div>
+
+        <DeleteAccountSection />
       </div>
     </div>
   );

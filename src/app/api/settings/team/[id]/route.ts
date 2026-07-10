@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { logActivity } from '@/lib/activity-logger';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -18,7 +19,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ member });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return apiError(err);
   }
 }
 
@@ -45,7 +46,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     const member = await prisma.teamMember.update({
-      where: { id },
+      where: { id, ownerId: user.id },
       data: updates,
       include: { permissions: true },
     });
@@ -66,7 +67,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     return NextResponse.json({ member });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return apiError(err);
   }
 }
 
@@ -84,7 +85,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
     const profile = await prisma.profile.findUnique({ where: { id: user.id } });
 
-    await prisma.teamMember.delete({ where: { id } });
+    await prisma.teamMember.delete({ where: { id, ownerId: user.id } });
 
     await logActivity({
       ownerId: user.id,
@@ -99,6 +100,6 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return apiError(err);
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { apiError } from '@/lib/api-error';
 
 export async function GET() {
     try {
@@ -9,7 +10,6 @@ export async function GET() {
         if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
         const [
-            totalBooked,
             pending,
             inTransit,
             delivered,
@@ -20,15 +20,14 @@ export async function GET() {
             recentErrors,
             lastSync,
         ] = await Promise.all([
-            prisma.shipment.count({ where: { userId: user.id } }),
-            prisma.shipment.count({ where: { userId: user.id, status: 'booked' } }),
+            prisma.order.count({ where: { userId: user.id, status: 'booked' } }),
             prisma.shipment.count({ where: { userId: user.id, status: 'in_transit' } }),
             prisma.shipment.count({ where: { userId: user.id, status: 'delivered' } }),
             prisma.shipment.count({ where: { userId: user.id, status: 'returned' } }),
             prisma.shipment.count({ where: { userId: user.id, status: 'cancelled' } }),
             prisma.shipment.count({ where: { userId: user.id, status: 'failed' } }),
             prisma.shipment.findMany({
-                where: { userId: user.id },
+                where: { userId: user.id, status: 'booked' },
                 orderBy: { createdAt: 'desc' },
                 take: 10,
             }),
@@ -45,12 +44,12 @@ export async function GET() {
 
 
         return NextResponse.json({
-            stats: { totalBooked, pending, inTransit, delivered, returned, cancelled, failed },
+            stats: { totalBooked: pending, pending, inTransit, delivered, returned, cancelled, failed },
             recentShipments,
             recentErrors,
             lastSync,
         });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

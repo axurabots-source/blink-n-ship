@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppSidebar from "@/components/AppSidebar";
+import { ToastProvider } from "@/components/Toast";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,12 +20,9 @@ export const metadata: Metadata = {
   description: "Order processing made simple",
 };
 
-// Prevent iOS/Safari from auto-zooming when inputs are focused.
-// maximum-scale=1 keeps zoom at 100% while still allowing user-initiated pinch-zoom.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({
@@ -37,8 +36,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex">
-        <AppSidebar />
-        <main className="flex-1 ml-60">{children}</main>
+        <ToastProvider>
+          <ErrorBoundary>
+            <AppSidebar />
+            <main className="flex-1 ml-60">{children}</main>
+          </ErrorBoundary>
+        </ToastProvider>
       </body>
     </html>
   );

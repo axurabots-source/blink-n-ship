@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { log } from '@/lib/logger';
 
 export interface LogEntry {
   ownerId: string;
@@ -26,6 +27,6 @@ export async function logActivity(entry: LogEntry): Promise<void> {
       },
     });
   } catch (err) {
-    console.error('Failed to log activity:', err);
+    log.error('DATABASE', 'Failed to persist activity log', { error: String(err) });
   }
 }

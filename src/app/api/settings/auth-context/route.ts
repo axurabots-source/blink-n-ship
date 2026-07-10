@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, DEFAULT_OWNER_PERMISSIONS } from '@/lib/permissions';
+import { apiError } from '@/lib/api-error';
 
 export async function GET() {
   try {
@@ -17,6 +18,6 @@ export async function GET() {
       },
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return apiError(err);
   }
 }

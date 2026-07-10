@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Filter, RefreshCw, ChevronRight, FileText, Printer, CheckCircle, Clock, Truck, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
+import { useToast } from "@/components/Toast";
 
 const T = {
     bg: '#ffffff',
@@ -17,6 +18,7 @@ const T = {
 };
 
 export default function BookingsList() {
+    const { toast } = useToast();
     const [shipments, setShipments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -40,7 +42,7 @@ export default function BookingsList() {
                 if (data.pages) setTotalPages(data.pages);
                 setLoading(false);
             })
-            .catch(() => setLoading(false));
+            .catch(() => { setLoading(false); toast('error', 'Failed to load data'); });
     };
 
     useEffect(() => {
@@ -55,7 +57,7 @@ export default function BookingsList() {
 
     const handleTrackNow = async (trackingNumber: string) => {
         if (!trackingNumber) return;
-        alert(`Requesting tracking sync for ${trackingNumber}...`);
+        toast('info', `Requesting tracking sync for ${trackingNumber}...`);
         try {
             const res = await fetch('/api/courier/track', {
                 method: 'POST',
@@ -67,6 +69,7 @@ export default function BookingsList() {
             }
         } catch (e) {
             console.error(e);
+            toast('error', 'Failed to sync tracking');
         }
     };
 

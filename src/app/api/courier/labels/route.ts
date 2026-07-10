@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateLabel } from '@/lib/flaship';
+import { apiError } from '@/lib/api-error';
 
 const FLASHIP_BASE = process.env.FLASHIP_BASE_URL || 'https://partners.flaship.pk';
 
@@ -36,6 +37,6 @@ export async function POST(request: Request) {
 
         return NextResponse.json({ success: true, labelUrl });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

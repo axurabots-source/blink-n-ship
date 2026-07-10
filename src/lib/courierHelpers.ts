@@ -1,8 +1,6 @@
 import { prisma } from './prisma';
+import { log } from '@/lib/logger';
 
-/**
- * Normalizes phone numbers to standard 11-digit Pakistani format
- */
 export function normalizePhoneNumber(phone: string | null): string {
     if (!phone) return '';
     const digits = phone.replace(/\D/g, '');
@@ -12,9 +10,6 @@ export function normalizePhoneNumber(phone: string | null): string {
     return digits;
 }
 
-/**
- * Audits a user activity log for tracking connection, bookings, and sync actions
- */
 export async function logActivity(
     userId: string,
     eventType: string,
@@ -35,6 +30,6 @@ export async function logActivity(
             },
         });
     } catch (err) {
-        console.error('Activity log error:', err);
+        log.error('COURIER', 'Failed to persist courier activity log', { error: String(err) });
     }
 }

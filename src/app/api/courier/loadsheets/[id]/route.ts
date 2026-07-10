@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(
     request: Request,
@@ -32,6 +33,6 @@ export async function GET(
         if (!loadsheet) return NextResponse.json({ error: 'Loadsheet not found' }, { status: 404 });
         return NextResponse.json({ loadsheet });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

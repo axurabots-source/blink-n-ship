@@ -315,15 +315,17 @@ function Spinner() {
 }
 
 // ─── Input Field ──────────────────────────────────────────────────────────────
-function InputField({ type, placeholder, value, onChange, required, minLength }: {
+function InputField({ type, placeholder, value, onChange, required, minLength, inputMode, autoComplete }: {
     type: string; placeholder: string; value: string;
-    onChange: (v: string) => void; required?: boolean; minLength?: number;
+    onChange: (v: string) => void; required?: boolean; minLength?: number; inputMode?: string; autoComplete?: string;
 }) {
     const [focused, setFocused] = useState(false);
     return (
         <input
             type={type}
             placeholder={placeholder}
+            inputMode={inputMode as any}
+            autoComplete={autoComplete}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             required={required}
@@ -352,6 +354,8 @@ export default function LoginPage() {
     const [isSignup, setIsSignup] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [businessName, setBusinessName] = useState('');
+    const [phone, setPhone] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -359,7 +363,7 @@ export default function LoginPage() {
     const supabase = createClient();
 
     useEffect(() => {
-        setError(''); setEmail(''); setPassword('');
+        setError(''); setEmail(''); setPassword(''); setBusinessName(''); setPhone('');
     }, [isSignup]);
 
     async function handleSubmit(e: React.FormEvent) {
@@ -367,13 +371,30 @@ export default function LoginPage() {
         setError('');
         setLoading(true);
 
+        if (isSignup && (!businessName.trim() || !phone.trim())) {
+            setError('Please enter your business name and phone number.');
+            setLoading(false);
+            return;
+        }
+
         const { error: authError } = isSignup
             ? await supabase.auth.signUp({ email, password })
             : await supabase.auth.signInWithPassword({ email, password });
 
+        if (authError) { setError(authError.message); setLoading(false); return; }
+
+        if (isSignup) {
+            try {
+                await fetch('/api/profile', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ businessName: businessName.trim(), phone: phone.trim() }),
+                });
+            } catch { /* non-critical */ }
+        }
+
         setLoading(false);
-        if (authError) { setError(authError.message); return; }
-        // Mobile users go directly to /courier/connect — desktop users go to /dashboard
+        localStorage.removeItem('bns_account_type');
         const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
         router.push(isSignup ? '/account-type' : (isMobile ? '/courier/connect' : '/dashboard'));
         router.refresh();
@@ -461,11 +482,19 @@ export default function LoginPage() {
                             </p>
 
                             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                <InputField type="email" placeholder="Email address" value={email} onChange={setEmail} required />
+                                {isSignup && (
+                                    <>
+                                        <InputField type="text" placeholder="Business name" inputMode="text" autoComplete="organization" value={businessName} onChange={setBusinessName} required />
+                                        <InputField type="tel" placeholder="Phone number (e.g. 03XXXXXXXXX)" inputMode="tel" autoComplete="tel" value={phone} onChange={setPhone} required />
+                                    </>
+                                )}
+                                <InputField type="email" placeholder="Email address" inputMode="email" autoComplete="email" value={email} onChange={setEmail} required />
                                 <div style={{ position: 'relative' }}>
                                     <InputField
                                         type={showPassword ? 'text' : 'password'}
                                         placeholder={isSignup ? 'Password (min. 6 characters)' : 'Password'}
+                                        inputMode="text"
+                                        autoComplete={isSignup ? 'new-password' : 'current-password'}
                                         value={password} onChange={setPassword} required minLength={6}
                                     />
                                     <button

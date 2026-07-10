@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { MapPin, Plus, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useToast } from "@/components/Toast";
 
 const T = {
     bg: '#ffffff',
@@ -16,6 +17,7 @@ const T = {
 };
 
 export default function PickupLocations() {
+    const { toast } = useToast();
     const [locations, setLocations] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -38,7 +40,7 @@ export default function PickupLocations() {
                 if (data.locations) setLocations(data.locations);
                 setLoading(false);
             })
-            .catch(() => setLoading(false));
+            .catch(() => { setLoading(false); toast('error', 'Failed to load data'); });
     };
 
     useEffect(() => {
@@ -71,7 +73,7 @@ export default function PickupLocations() {
                 loadLocations();
             }
         } catch (e) {
-            alert('Failed to add pickup location');
+            toast('error', 'Failed to add pickup location');
         } finally {
             setSubmitting(false);
         }
@@ -85,7 +87,7 @@ export default function PickupLocations() {
                 loadLocations();
             }
         } catch (e) {
-            alert('Failed to delete location');
+            toast('error', 'Failed to delete location');
         }
     };
 
@@ -135,11 +137,11 @@ export default function PickupLocations() {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }} className="bns-form-grid">
                             <div>
                                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: T.muted, marginBottom: '6px' }}>Phone Number</label>
-                                <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: `1px solid ${T.border}`, fontSize: '0.85rem' }} />
+                                <input type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: `1px solid ${T.border}`, fontSize: '0.85rem' }} />
                             </div>
                             <div>
                                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: T.muted, marginBottom: '6px' }}>City *</label>
-                                <input type="text" required value={city} onChange={(e) => setCity(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: `1px solid ${T.border}`, fontSize: '0.85rem' }} />
+                                <input type="text" autoComplete="address-level2" required value={city} onChange={(e) => setCity(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: `1px solid ${T.border}`, fontSize: '0.85rem' }} />
                             </div>
                         </div>
 

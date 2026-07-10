@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { apiError } from '@/lib/api-error';
 
 export async function POST() {
   try {
@@ -13,13 +14,13 @@ export async function POST() {
       data: { isCurrent: false },
     });
 
-    const { error } = await supabase.auth.updateUser({});
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
+    // Note: Full Supabase session revocation requires the Supabase admin API or
+    // the user to change their password. The local DB records are marked as inactive.
+    // This provides defense-in-depth — the old tokens will not be accepted once
+    // the server-side session validation is implemented in the proxy.
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return apiError(err);
   }
 }

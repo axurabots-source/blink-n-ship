@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { safePagination } from '@/lib/validation';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(request: Request) {
     try {
@@ -11,9 +13,7 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const status = searchParams.get('status');
         const search = searchParams.get('search');
-        const page = parseInt(searchParams.get('page') || '1');
-        const limit = parseInt(searchParams.get('limit') || '20');
-        const skip = (page - 1) * limit;
+        const { page, limit, skip } = safePagination(searchParams.get('page'), searchParams.get('limit'));
 
         const where: any = { userId: user.id };
         if (status && status !== 'all') where.status = status;
@@ -41,6 +41,6 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ shipments, total, page, limit, pages: Math.ceil(total / limit) });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

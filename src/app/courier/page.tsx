@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { 
     TrendingUp, Package, CheckCircle, AlertTriangle, 
-    RefreshCw, Play, RefreshCwOff, ShieldAlert, ArrowUpRight 
+    RefreshCw, Play, RefreshCwOff, ShieldAlert, ArrowUpRight, Eye, Search 
 } from 'lucide-react';
 import Link from 'next/link';
+import { useToast } from "@/components/Toast";
 
 const T = {
     bg: '#ffffff',
@@ -29,13 +30,32 @@ interface Stats {
     failed: number;
 }
 
+interface LiveStats {
+    booked: number;
+    cancelled: number;
+    inTransit: number;
+    delivered: number;
+}
+
 export default function CourierDashboard() {
+    const { toast } = useToast();
     const [stats, setStats] = useState<Stats | null>(null);
     const [recentShipments, setRecentShipments] = useState<any[]>([]);
     const [recentErrors, setRecentErrors] = useState<any[]>([]);
     const [lastSync, setLastSync] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [liveStats, setLiveStats] = useState<LiveStats | null>(null);
+
+    async function fetchLiveStats() {
+        try {
+            const res = await fetch('/api/courier/dashboard/stats');
+            if (res.ok) {
+                const data = await res.json();
+                setLiveStats(data);
+            }
+        } catch { /* silent */ }
+    }
 
     async function fetchCourierDashboard() {
         try {
@@ -50,6 +70,7 @@ export default function CourierDashboard() {
             (window as any).__BNS_CACHE__.courierDashboard = data;
         } catch (e) {
             console.error('Failed to load courier dashboard:', e);
+            toast('error', 'Failed to load courier dashboard data');
         }
     }
 
@@ -63,10 +84,12 @@ export default function CourierDashboard() {
             if (cd.lastSync) setLastSync(cd.lastSync);
         }
 
+        fetchLiveStats();
         fetchCourierDashboard().finally(() => setLoading(false));
 
         const interval = setInterval(fetchCourierDashboard, 30000);
-        return () => clearInterval(interval);
+        const liveInterval = setInterval(fetchLiveStats, 10000);
+        return () => { clearInterval(interval); clearInterval(liveInterval); };
     }, []);
 
     async function handleRefresh() {
@@ -144,35 +167,80 @@ export default function CourierDashboard() {
                 </div>
             </div>
 
-            {/* Stats Row */}
+            {/* Live Status Bar — auto-refreshes every 10s */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 12px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 700, color: '#059669', letterSpacing: '0.03em' }}>
+                    <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#10b981' }} />
+                    LIVE
+                </div>
+                <span style={{ fontSize: '0.72rem', color: T.muted }}>Auto-refreshing every 10s</span>
+            </div>
+
+            {/* Live Stats Row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }} className="bns-grid">
+                <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #fff5f0 0%, #ffffff 100%)', border: `1px solid ${T.border}`, borderRadius: '12px', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: '#CC785C', borderRadius: '12px 0 0 12px' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Booked</span>
+                        <Package size={16} color={T.accent} />
+                    </div>
+                    <span style={{ fontSize: '1.8rem', fontWeight: 700, letterSpacing: '-0.03em', color: T.accent }}>{liveStats?.booked ?? stats?.totalBooked ?? 0}</span>
+                </div>
+                <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #fff7ed 0%, #ffffff 100%)', border: `1px solid ${T.border}`, borderRadius: '12px', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: '#f59e0b', borderRadius: '12px 0 0 12px' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>In Transit</span>
+                        <TrendingUp size={16} color="#f59e0b" />
+                    </div>
+                    <span style={{ fontSize: '1.8rem', fontWeight: 700, letterSpacing: '-0.03em', color: '#d97706' }}>{liveStats?.inTransit ?? stats?.inTransit ?? 0}</span>
+                </div>
+                <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%)', border: `1px solid ${T.border}`, borderRadius: '12px', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: '#10b981', borderRadius: '12px 0 0 12px' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Delivered</span>
+                        <CheckCircle size={16} color="#10b981" />
+                    </div>
+                    <span style={{ fontSize: '1.8rem', fontWeight: 700, letterSpacing: '-0.03em', color: '#059669' }}>{liveStats?.delivered ?? stats?.delivered ?? 0}</span>
+                </div>
+                <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #fef2f2 0%, #ffffff 100%)', border: `1px solid ${T.border}`, borderRadius: '12px', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: '#ef4444', borderRadius: '12px 0 0 12px' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cancelled</span>
+                        <AlertTriangle size={16} color="#ef4444" />
+                    </div>
+                    <span style={{ fontSize: '1.8rem', fontWeight: 700, letterSpacing: '-0.03em', color: '#dc2626' }}>{liveStats?.cancelled ?? stats?.cancelled ?? 0}</span>
+                </div>
+            </div>
+
+            {/* Full Stats Row (detailed) */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '32px' }} className="bns-grid">
-                <div style={{ padding: '24px', background: T.card, border: `1px solid ${T.border}`, borderRadius: '12px' }}>
+                <div style={{ padding: '20px 24px', background: T.card, border: `1px solid ${T.border}`, borderRadius: '12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Booked</span>
-                        <Package size={18} color={T.accent} />
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Booked</span>
+                        <Package size={16} color={T.accent} />
                     </div>
-                    <span style={{ fontSize: '2rem', fontWeight: 700, letterSpacing: '-0.03em' }}>{stats?.totalBooked || 0}</span>
+                    <span style={{ fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.03em' }}>{stats?.totalBooked || 0}</span>
                 </div>
-                <div style={{ padding: '24px', background: T.card, border: `1px solid ${T.border}`, borderRadius: '12px' }}>
+                <div style={{ padding: '20px 24px', background: T.card, border: `1px solid ${T.border}`, borderRadius: '12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>In Transit</span>
-                        <TrendingUp size={18} color="#CC785C" />
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pending</span>
+                        <TrendingUp size={16} color="#CC785C" />
                     </div>
-                    <span style={{ fontSize: '2rem', fontWeight: 700, letterSpacing: '-0.03em' }}>{stats?.inTransit || 0}</span>
+                    <span style={{ fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.03em' }}>{stats?.pending || 0}</span>
                 </div>
-                <div style={{ padding: '24px', background: T.card, border: `1px solid ${T.border}`, borderRadius: '12px' }}>
+                <div style={{ padding: '20px 24px', background: T.card, border: `1px solid ${T.border}`, borderRadius: '12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Delivered</span>
-                        <CheckCircle size={18} color="#10b981" />
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Returned</span>
+                        <AlertTriangle size={16} color="#f59e0b" />
                     </div>
-                    <span style={{ fontSize: '2rem', fontWeight: 700, letterSpacing: '-0.03em' }}>{stats?.delivered || 0}</span>
+                    <span style={{ fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.03em' }}>{stats?.returned || 0}</span>
                 </div>
-                <div style={{ padding: '24px', background: T.card, border: `1px solid ${T.border}`, borderRadius: '12px' }}>
+                <div style={{ padding: '20px 24px', background: T.card, border: `1px solid ${T.border}`, borderRadius: '12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Returned</span>
-                        <AlertTriangle size={18} color="#f59e0b" />
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Failed</span>
+                        <AlertTriangle size={16} color="#ef4444" />
                     </div>
-                    <span style={{ fontSize: '2rem', fontWeight: 700, letterSpacing: '-0.03em' }}>{stats?.returned || 0}</span>
+                    <span style={{ fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.03em' }}>{stats?.failed || 0}</span>
                 </div>
             </div>
 
@@ -187,6 +255,10 @@ export default function CourierDashboard() {
                     <Link href="/orders" style={{ textDecoration: 'none', color: T.fg, border: `1px solid ${T.border}`, background: '#fff', padding: '10px 20px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                         <RefreshCw size={16} />
                         <span>Reload Orders</span>
+                    </Link>
+                    <Link href="/tracking" style={{ textDecoration: 'none', color: '#fff', background: '#059669', padding: '10px 20px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                        <Eye size={16} />
+                        <span>Live Tracking</span>
                     </Link>
                 </div>
             </div>

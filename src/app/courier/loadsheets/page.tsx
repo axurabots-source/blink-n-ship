@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, Plus, Printer, RefreshCw, CheckCircle, Clock } from 'lucide-react';
+import { useToast } from "@/components/Toast";
 
 const T = {
     bg: '#ffffff',
@@ -16,6 +17,7 @@ const T = {
 };
 
 export default function CourierLoadsheets() {
+    const { toast } = useToast();
     const [loadsheets, setLoadsheets] = useState<any[]>([]);
     const [eligible, setEligible] = useState<any[]>([]);
     const [selected, setSelected] = useState<string[]>([]);
@@ -31,7 +33,7 @@ export default function CourierLoadsheets() {
                 if (data.eligibleShipments) setEligible(data.eligibleShipments);
                 setLoading(false);
             })
-            .catch(() => setLoading(false));
+            .catch(() => { setLoading(false); toast('error', 'Failed to load data'); });
     };
 
     useEffect(() => {
@@ -54,12 +56,12 @@ export default function CourierLoadsheets() {
                 body: JSON.stringify({ shipmentIds: selected }),
             });
             if (res.ok) {
-                alert('Loadsheet generated successfully');
+                toast('success', 'Loadsheet generated successfully');
                 setSelected([]);
                 loadData();
             }
         } catch (e) {
-            alert('Failed to generate loadsheet');
+            toast('error', 'Failed to generate loadsheet');
         } finally {
             setSubmitting(false);
         }

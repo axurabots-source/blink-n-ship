@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { safePagination } from '@/lib/validation';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(request: Request) {
     try {
@@ -9,11 +11,9 @@ export async function GET(request: Request) {
         if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
         const { searchParams } = new URL(request.url);
-        const page = parseInt(searchParams.get('page') || '1');
-        const limit = parseInt(searchParams.get('limit') || '50');
         const isSuccess = searchParams.get('success');
         const endpoint = searchParams.get('endpoint');
-        const skip = (page - 1) * limit;
+        const { page, limit, skip } = safePagination(searchParams.get('page'), searchParams.get('limit'));
 
         const where: any = { userId: user.id };
         if (isSuccess !== null) where.isSuccess = isSuccess === 'true';
@@ -26,6 +26,6 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ logs, total, page, limit });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

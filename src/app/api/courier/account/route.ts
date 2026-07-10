@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { apiError } from '@/lib/api-error';
 
 export async function GET() {
     try {
@@ -30,7 +31,7 @@ export async function GET() {
 
         return NextResponse.json({ account, meta, settings });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }
 
@@ -40,10 +41,9 @@ export async function PATCH(request: Request) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-        const { balance, accountName } = await request.json();
+        const { accountName } = await request.json();
 
         const updateData: any = {};
-        if (balance !== undefined) updateData.balance = Number(balance);
         if (accountName !== undefined) updateData.accountName = accountName;
 
         const updated = await prisma.courierAccountMetadata.updateMany({
@@ -53,25 +53,11 @@ export async function PATCH(request: Request) {
 
         return NextResponse.json({ success: true, updatedCount: updated.count });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }
 
-export async function DELETE() {
-    try {
-        const supabase = await createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-
-        // Deactivate connection, but preserve rate cards and other details in the database
-        await prisma.courierAccount.updateMany({
-            where: { userId: user.id, provider: 'flaship' },
-            data: { isActive: false },
-        });
-
-        return NextResponse.json({ success: true });
-    } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
-    }
-}
+// DELETE — permanently removed.
+// The courier account binding is permanent and cannot be disconnected from the UI.
+// Account deletion is handled through the account deletion endpoint only.
 

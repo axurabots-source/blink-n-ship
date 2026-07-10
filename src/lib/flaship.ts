@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { decrypt } from '@/lib/crypto';
+import { log } from '@/lib/logger';
 import {
     normalizeCompanyList,
     normalizeStatuses,
@@ -151,8 +152,7 @@ export async function fetchCourierCompanies(userId: string) {
     const raw = await apiRequest(api_key, '/company_list/', 'GET');
     const normalized = normalizeCompanyList(raw);
     const couriers = normalized.companies;
-    console.log('[Flaship] fetchCourierCompanies → normalized couriers count:', couriers.length);
-    if (couriers.length > 0) console.log('[Flaship] couriers[0]:', JSON.stringify(couriers[0]));
+    log.info('COURIER', `fetchCourierCompanies → ${couriers.length} couriers`);
     return { couriers };
 }
 
@@ -160,7 +160,7 @@ export async function fetchOperationalCities(userId: string) {
     const { api_key } = await getCredentials(userId);
     const raw = await apiRequest(api_key, '/company_list/', 'GET');
     const normalized = normalizeCompanyList(raw);
-    console.log('[Flaship] fetchOperationalCities parsed unique cities count:', normalized.cities.length);
+    log.info('COURIER', `fetchOperationalCities → ${normalized.cities.length} cities`);
     return { cities: normalized.cities };
 }
 
@@ -172,9 +172,9 @@ export async function fetchRateCards(userId: string) {
     let raw: any;
     try {
         raw = await apiRequest(api_key, '/api/rate-card/', 'GET');
-        console.log('[Flaship] fetchRateCards /api/rate-card/ response keys:', Object.keys(raw || {}));
+        log.info('COURIER', 'fetchRateCards response', { keys: Object.keys(raw || {}) });
     } catch (err: any) {
-        console.warn('[Flaship] fetchRateCards /api/rate-card/ failed, falling back to /company_list/. Error:', err.message);
+        log.warn('COURIER', 'fetchRateCards /api/rate-card/ failed, falling back to /company_list/', { error: err.message });
         raw = await apiRequest(api_key, '/company_list/', 'GET');
     }
 
@@ -182,7 +182,7 @@ export async function fetchRateCards(userId: string) {
 
     // Fallback to basic default rate cards per company if API returned nothing.
     if (normalized.length === 0) {
-        console.warn('[Flaship] No rate cards found in response. Generating default rate cards...');
+        log.warn('COURIER', 'No rate cards found, generating defaults');
         const courierNames = ['tcs', 'daewoo', 'leopard', 'trax', 'mnp', 'tranzo', 'dex'];
         normalized = courierNames.flatMap((name) => [
             { id: `${name}-overnight`, company_code: name, service_type: 'overnight', min_w: 0, max_w: 1, base: 250, extra: 100, cod_fee: 0, fuel: 0, origin: 'All', destination: 'All' },
@@ -190,8 +190,7 @@ export async function fetchRateCards(userId: string) {
         ]);
     }
 
-    console.log('[Flaship] fetchRateCards final normalized rates count:', normalized.length);
-    if (normalized.length > 0) console.log('[Flaship] Sample rate card:', JSON.stringify(normalized[0]));
+    log.info('COURIER', `fetchRateCards → ${normalized.length} rates`);
     return { rates: normalized };
 }
 

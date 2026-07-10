@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { isFlashipConnected } from '@/lib/courier-guard';
+import CourierLock from '@/components/CourierLock';
 import DashboardClient from './DashboardClient';
 
 export default async function DashboardPage() {
@@ -8,6 +10,7 @@ export default async function DashboardPage() {
 
     if (!user) redirect('/login');
 
-    // Render client container immediately — it handles async load & caching
-    return <DashboardClient />;
+    const connected = await isFlashipConnected(user.id);
+
+    return <CourierLock>{connected ? <DashboardClient /> : <div />}</CourierLock>;
 }

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { logActivity } from '@/lib/activity-logger';
+import { sanitizeString, sanitizeOptionalString, isValidEmail } from '@/lib/validation';
+import { apiError } from '@/lib/api-error';
+import { rateLimit, Limit } from '@/lib/rate-limit';
 
 const MODULES = ['dashboard', 'orders', 'products', 'ledger', 'settings'];
 
@@ -10,6 +13,11 @@ export async function GET() {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
+    const rl = rateLimit('team', user.id, Limit.team);
+    if (!rl.success) {
+      return NextResponse.json({ error: 'Too many requests. Please wait before trying again.' }, { status: 429 });
+    }
 
     const profile = await prisma.profile.findUnique({ where: { id: user.id } });
     if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
@@ -22,7 +30,7 @@ export async function GET() {
 
     return NextResponse.json({ members });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return apiError(err);
   }
 }
 
@@ -32,17 +40,31 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-    const profile = await prisma.profile.findUnique({ where: { id: user.id } });
-    if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    const rl = rateLimit('team', user.id, Limit.team);
+    if (!rl.success) {
+      return NextResponse.json({ error: 'Too many team invitations. Please wait before trying again.' }, { status: 429 });
+    }
 
-    const { email, name, phone, role } = await request.json();
+    const raw = await request.json();
+    const email = sanitizeString(raw.email);
+    const name = sanitizeString(raw.name, 200);
+    const phone = sanitizeOptionalString(raw.phone, 20);
+    const role = sanitizeString(raw.role, 50) || 'employee';
+
     if (!email || !name) {
       return NextResponse.json({ error: 'Email and name are required' }, { status: 400 });
     }
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
+    }
 
-    const existing = await prisma.teamMember.findFirst({
-      where: { ownerId: user.id, email },
-    });
+    const [profile, existing] = await Promise.all([
+      prisma.profile.findUnique({ where: { id: user.id } }),
+      prisma.teamMember.findFirst({
+        where: { ownerId: user.id, email },
+      }),
+    ]);
+    if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     if (existing) {
       return NextResponse.json({ error: 'A team member with this email already exists' }, { status: 409 });
     }
@@ -53,7 +75,7 @@ export async function POST(request: Request) {
         email,
         name,
         phone: phone || null,
-        role: role || 'employee',
+        role,
         status: 'invited',
         permissions: {
           create: MODULES.map(module => ({
@@ -83,6 +105,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ member }, { status: 201 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return apiError(err);
   }
 }

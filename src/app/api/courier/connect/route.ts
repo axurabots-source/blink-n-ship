@@ -5,6 +5,9 @@ import { encrypt } from '@/lib/crypto';
 import { verifyAndFetchAccount } from '@/lib/flaship';
 import { logActivity } from '@/lib/courierHelpers';
 import { syncCourierData } from '@/lib/sync-service';
+import { apiError } from '@/lib/api-error';
+import { rateLimit, Limit } from '@/lib/rate-limit';
+import { log } from '@/lib/logger';
 
 export async function POST(request: Request) {
     try {
@@ -12,13 +15,17 @@ export async function POST(request: Request) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
+        const rl = rateLimit('connect', user.id, Limit.sensitive);
+        if (!rl.success) {
+            return NextResponse.json({ error: 'Too many connection attempts. Please wait before trying again.' }, { status: 429 });
+        }
+
         const { apiKey } = await request.json();
         if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length < 5) {
             return NextResponse.json({ error: 'Invalid API key' }, { status: 400 });
         }
 
-        // HTTP headers only accept Latin-1 characters (ByteString, code ≤ 255).
-        // Flaship API keys are always plain ASCII — reject anything with unicode.
+        // HTTP headers reject Latin-1 characters (code > 255).
         const cleanKey = apiKey.trim();
         if (/[^\x20-\x7E]/.test(cleanKey)) {
             return NextResponse.json({
@@ -26,7 +33,18 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
 
-        // Step 0: Ensure the user Profile exists to prevent foreign key constraint violations
+        // Step 0: Check if already permanently connected
+        const existing = await prisma.courierAccount.findFirst({
+            where: { userId: user.id, provider: 'flaship', isActive: true },
+            select: { id: true, connectedAt: true },
+        });
+        if (existing) {
+            return NextResponse.json({
+                error: 'A Flaship account is already permanently connected to this Blink N Ship account. For security, this connection cannot be changed or replaced. If you need to connect a different account, please contact support.',
+            }, { status: 403 });
+        }
+
+        // Step 1: Ensure the user profile exists to prevent foreign key constraint violations
         let profile = await prisma.profile.findUnique({
             where: { id: user.id }
         });
@@ -125,10 +143,10 @@ export async function POST(request: Request) {
                 syncOutcome = await syncCourierData(user.id, ['companies', 'pickup_locations', 'cities', 'rate_cards']);
             } else {
                 // Reconnect: data already exists, skip the full sync to avoid delays
-                console.log('[Connect] Skipping sync — data already exists in DB (reconnect scenario).');
+                log.info('COURIER', 'Sync skipped — data already exists (reconnect)');
             }
         } catch (syncErr: any) {
-            console.error('[Connect Sync] Auto-sync failed:', syncErr.message);
+            log.error('COURIER', 'Auto-sync failed after connect', { error: String(syncErr) });
         }
 
         await logActivity(user.id, 'connect', `Connected to Flaship successfully. Sync: ${syncOutcome.totalSynced > 0 ? `${syncOutcome.totalSynced} records synced` : 'skipped (data already present)'}`, null, null, { accountName: accountData.businessName });
@@ -146,6 +164,6 @@ export async function POST(request: Request) {
             },
         });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message || 'Connection failed' }, { status: 500 });
+        return apiError(err);
     }
 }

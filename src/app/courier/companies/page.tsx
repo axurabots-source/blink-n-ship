@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Truck, Check, RefreshCw } from 'lucide-react';
+import { useToast } from "@/components/Toast";
 
 const T = {
     bg: '#ffffff',
@@ -16,6 +17,7 @@ const T = {
 };
 
 export default function CourierCompanies() {
+    const { toast } = useToast();
     const [companies, setCompanies] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -28,7 +30,7 @@ export default function CourierCompanies() {
                 if (data.companies) setCompanies(data.companies);
                 setLoading(false);
             })
-            .catch(() => setLoading(false));
+            .catch(() => { setLoading(false); toast('error', 'Failed to load data'); });
     };
 
     useEffect(() => {
@@ -43,7 +45,7 @@ export default function CourierCompanies() {
                 loadCompanies();
             }
         } catch (e) {
-            alert('Failed to sync courier companies');
+            toast('error', 'Failed to sync courier companies');
         } finally {
             setSyncing(false);
         }

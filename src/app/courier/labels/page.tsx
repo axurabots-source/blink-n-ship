@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, Printer, Download, RefreshCw, CheckSquare, Square, Search } from 'lucide-react';
+import { useToast } from "@/components/Toast";
 
 const T = {
     bg: '#ffffff',
@@ -16,6 +17,7 @@ const T = {
 };
 
 export default function CourierLabels() {
+    const { toast } = useToast();
     const [shipments, setShipments] = useState<any[]>([]);
     const [selected, setSelected] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
@@ -29,7 +31,7 @@ export default function CourierLabels() {
                 if (data.shipments) setShipments(data.shipments);
                 setLoading(false);
             })
-            .catch(() => setLoading(false));
+            .catch(() => { setLoading(false); toast('error', 'Failed to load data'); });
     }, []);
 
     const filtered = shipments.filter(s => {
@@ -66,11 +68,11 @@ export default function CourierLabels() {
                 body: JSON.stringify({ shipmentIds: selected }),
             });
             if (res.ok) {
-                alert(`Successfully generated/cached labels for ${selected.length} shipments.`);
+                toast('success', `Successfully generated/cached labels for ${selected.length} shipments.`);
                 setSelected([]);
             }
         } catch (e) {
-            alert('Label generation failed');
+            toast('error', 'Label generation failed');
         } finally {
             setGenerating(false);
         }

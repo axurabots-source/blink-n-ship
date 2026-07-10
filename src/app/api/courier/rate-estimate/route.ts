@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { apiError } from '@/lib/api-error';
 
 // GET /api/courier/rate-estimate?weight=1.5&city=Lahore&company=tcs
 export async function GET(request: Request) {
@@ -128,6 +129,6 @@ export async function GET(request: Request) {
             shippingCost: primaryCost,
         });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

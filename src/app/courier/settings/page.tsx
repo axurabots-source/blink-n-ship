@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, Save, RefreshCw } from 'lucide-react';
+import { Settings, Save, RefreshCw, ShieldCheck, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
+import { useToast } from "@/components/Toast";
 
 const T = {
     bg: '#ffffff',
@@ -16,13 +17,16 @@ const T = {
 };
 
 export default function CourierSettings() {
+    const { toast } = useToast();
     const [settings, setSettings] = useState<any>({});
     const [companies, setCompanies] = useState<any[]>([]);
     const [locations, setLocations] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [testing, setTesting] = useState(false);
+    const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [connectionInfo, setConnectionInfo] = useState<any>(null);
 
-    // Form inputs
     const [defaultCompanyId, setDefaultCompanyId] = useState('');
     const [defaultPickupId, setDefaultPickupId] = useState('');
     const [defaultServiceType, setDefaultServiceType] = useState('overnight');
@@ -35,7 +39,8 @@ export default function CourierSettings() {
             fetch('/api/courier/settings').then(r => r.json()),
             fetch('/api/courier/companies').then(r => r.json()),
             fetch('/api/courier/pickup-locations').then(r => r.json()),
-        ]).then(([sData, cData, lData]) => {
+            fetch('/api/courier/account').then(r => r.json()),
+        ]).then(([sData, cData, lData, aData]) => {
             if (sData.settings) {
                 setSettings(sData.settings);
                 setDefaultCompanyId(sData.settings.defaultCompanyId || '');
@@ -47,8 +52,9 @@ export default function CourierSettings() {
             }
             if (cData.companies) setCompanies(cData.companies);
             if (lData.locations) setLocations(lData.locations);
+            if (aData.account) setConnectionInfo(aData.account);
             setLoading(false);
-        }).catch(() => setLoading(false));
+        }).catch(() => { setLoading(false); toast('error', 'Failed to load data'); });
     }, []);
 
     const handleSave = async (e: React.FormEvent) => {
@@ -68,12 +74,30 @@ export default function CourierSettings() {
                 }),
             });
             if (res.ok) {
-                alert('Settings saved successfully');
+                toast('success', 'Settings saved successfully');
             }
         } catch (e) {
-            alert('Failed to save settings');
+            toast('error', 'Failed to save settings');
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleTestConnection = async () => {
+        setTesting(true);
+        setTestResult(null);
+        try {
+            const res = await fetch('/api/courier/account');
+            const data = await res.json();
+            if (data.account && data.meta) {
+                setTestResult({ success: true, message: 'Connection verified. API is responding correctly.' });
+            } else {
+                setTestResult({ success: false, message: 'Connection record found but unable to verify API status.' });
+            }
+        } catch {
+            setTestResult({ success: false, message: 'Could not reach the courier service. The connection may be temporarily unavailable.' });
+        } finally {
+            setTesting(false);
         }
     };
 
@@ -97,6 +121,73 @@ export default function CourierSettings() {
                 <h1 style={{ fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: '6px' }}>Courier Settings</h1>
                 <p style={{ color: T.muted, fontSize: '0.875rem' }} className="bns-subtext">Configure default carriers, dispatch parameters, and automatic tracking intervals.</p>
             </div>
+
+            {/* Connection Status Card */}
+            {connectionInfo && (
+                <div style={{ border: `1px solid ${T.border}`, borderRadius: '12px', padding: '24px', background: T.card, maxWidth: '600px', marginBottom: 24 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                        <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '10px', borderRadius: '8px', color: '#10b981' }}>
+                            <ShieldCheck size={20} />
+                        </div>
+                        <div>
+                            <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Connection Status</h3>
+                            <p style={{ fontSize: '0.78rem', color: T.muted, margin: '2px 0 0' }}>
+                                Permanently connected to Flaship Pakistan
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: '0.82rem' }}>
+                            <span style={{ color: T.muted }}>Status</span>
+                            <span style={{ fontWeight: 600, color: '#16a34a' }}>Connected</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: '0.82rem' }}>
+                            <span style={{ color: T.muted }}>Provider</span>
+                            <span style={{ fontWeight: 600, color: T.fg }}>Flaship Pakistan</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: '0.82rem' }}>
+                            <span style={{ color: T.muted }}>Connected Since</span>
+                            <span style={{ fontWeight: 600, color: T.fg }}>
+                                {connectionInfo.connectedAt
+                                    ? new Date(connectionInfo.connectedAt).toLocaleDateString('en-PK', { year: 'numeric', month: 'long', day: 'numeric' })
+                                    : '—'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={handleTestConnection}
+                        disabled={testing}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 20px',
+                            background: T.bg, color: T.fg, border: `1px solid ${T.border}`,
+                            borderRadius: 8, fontWeight: 600, fontSize: '0.82rem', cursor: testing ? 'not-allowed' : 'pointer',
+                        }}
+                    >
+                        {testing ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                        {testing ? 'Testing...' : 'Test Connection'}
+                    </button>
+
+                    {testResult && (
+                        <div style={{
+                            display: 'flex', gap: 10, padding: '12px 14px', marginTop: 12,
+                            background: testResult.success ? '#f0fdf4' : '#fef2f2',
+                            border: `1px solid ${testResult.success ? '#bbf7d0' : '#fecaca'}`,
+                            borderRadius: 8, fontSize: '0.8rem',
+                            color: testResult.success ? '#166534' : '#dc2626',
+                        }}>
+                            {testResult.success ? <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 1 }} /> : <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />}
+                            <span>{testResult.message}</span>
+                        </div>
+                    )}
+
+                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px 14px', marginTop: 16, fontSize: '0.78rem', color: '#166534', display: 'flex', gap: 8 }}>
+                        <Info size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span>This connection is permanently bound and cannot be disconnected from the UI.</span>
+                    </div>
+                </div>
+            )}
 
             <div style={{ border: `1px solid ${T.border}`, borderRadius: '12px', padding: '32px', background: T.card, maxWidth: '600px' }}>
                 <form onSubmit={handleSave}>
@@ -156,11 +247,11 @@ export default function CourierSettings() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }} className="bns-form-grid">
                         <div>
                             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Booking Retry Count</label>
-                            <input type="number" value={bookingRetryCount} onChange={(e) => setBookingRetryCount(Number(e.target.value))} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: `1px solid ${T.border}`, fontSize: '0.85rem' }} />
+                            <input type="number" inputMode="numeric" value={bookingRetryCount} onChange={(e) => setBookingRetryCount(Number(e.target.value))} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: `1px solid ${T.border}`, fontSize: '0.85rem' }} />
                         </div>
                         <div>
                             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>API Timeout (Secs)</label>
-                            <input type="number" value={timeoutSeconds} onChange={(e) => setTimeoutSeconds(Number(e.target.value))} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: `1px solid ${T.border}`, fontSize: '0.85rem' }} />
+                            <input type="number" inputMode="numeric" value={timeoutSeconds} onChange={(e) => setTimeoutSeconds(Number(e.target.value))} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: `1px solid ${T.border}`, fontSize: '0.85rem' }} />
                         </div>
                     </div>
 

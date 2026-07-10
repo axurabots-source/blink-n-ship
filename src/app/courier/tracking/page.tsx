@@ -90,6 +90,7 @@ export default function ShipmentTracking() {
                     <input
                         type="text"
                         placeholder="Enter tracking number (e.g. FLP-100456)"
+                        autoComplete="off"
                         value={trackingNumber}
                         onChange={(e) => setTrackingNumber(e.target.value)}
                         style={{ flex: 1, padding: '12px 16px', borderRadius: '8px', border: `1px solid ${T.border}`, fontSize: '0.875rem', outline: 'none' }}

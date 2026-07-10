@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Globe, RefreshCw, Search, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useToast } from "@/components/Toast";
 
 const T = {
     bg: '#ffffff',
@@ -15,6 +16,7 @@ const T = {
 };
 
 export default function OperationalCities() {
+    const { toast } = useToast();
     const [cities, setCities] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -45,7 +47,7 @@ export default function OperationalCities() {
                 }
                 setLoading(false);
             })
-            .catch(() => setLoading(false));
+            .catch(() => { setLoading(false); toast('error', 'Failed to load data'); });
     };
 
     useEffect(() => {
@@ -59,10 +61,10 @@ export default function OperationalCities() {
             if (res.ok) {
                 loadCities();
             } else {
-                alert('Failed to sync operational cities');
+                toast('error', 'Failed to sync operational cities');
             }
         } catch (e) {
-            alert('Failed to sync operational cities');
+            toast('error', 'Failed to sync operational cities');
         } finally {
             setSyncing(false);
         }

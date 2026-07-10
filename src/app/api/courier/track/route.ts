@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { getTrackingStatus } from '@/lib/flaship';
 import { logActivity } from '@/lib/courierHelpers';
+import { apiError } from '@/lib/api-error';
 
 export async function POST(request: Request) {
     try {
@@ -94,6 +95,6 @@ export async function POST(request: Request) {
 
         return NextResponse.json({ tracking: trackingData, shipmentId: shipment?.id });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

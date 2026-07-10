@@ -57,6 +57,7 @@ export default function AccountTypePage() {
                 throw new Error(body.error || 'Something went wrong');
             }
 
+            localStorage.removeItem('bns_account_type');
             router.push('/connect-courier');
         } catch (err: any) {
             setError(err.message);

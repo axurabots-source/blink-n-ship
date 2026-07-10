@@ -45,3 +45,49 @@ body {
   background: var(--border);
   border-radius: 999px;
 }
+
+/* Global focus-visible indicator for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Remove focus outline for mouse users but keep for keyboard */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Screen-reader-only utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+/* Better touch scrolling on all scrollable containers */
+.bns-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Minimum touch target size for interactive elements */
+.bns-touch {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Responsive container for any page */
+.bns-page {
+  padding: 40px 48px;
+}
+
+@media (max-width: 768px) {
+  .bns-page {
+    padding: 20px 16px !important;
+  }
+}

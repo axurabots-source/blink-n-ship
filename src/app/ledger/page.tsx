@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useToast } from '@/components/Toast';
 import {
     TrendingUp,
     DollarSign,
@@ -12,7 +13,12 @@ import {
     Shield,
     ImageOff,
 } from 'lucide-react';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
+import dynamic from 'next/dynamic';
+
+const ProfitChart = dynamic(() => import('@/components/ProfitChart'), {
+    ssr: false,
+    loading: () => <div style={{ height: 280, background: '#fafafa', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#737373', fontSize: '0.8rem' }}>Loading chart...</div>,
+});
 
 type Order = {
     id: string;
@@ -24,6 +30,7 @@ type Order = {
     productId: string | null;
     quantity: number;
     costPrice: string | null;
+    saleAmount: string | null;
     sellingPrice: string | null;
     profit: string | null;
     status: string;
@@ -57,6 +64,7 @@ const T = {
 };
 
 export default function LedgerPage() {
+    const { toast } = useToast();
     const [orders, setOrders] = useState<Order[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -82,6 +90,7 @@ export default function LedgerPage() {
             }
         } catch (err) {
             console.error('Ledger refresh error:', err);
+            toast('error', 'Failed to refresh ledger data');
         } finally {
             setLoading(false);
         }
@@ -101,7 +110,7 @@ export default function LedgerPage() {
 
     const bookedOrders = orders.filter((o) => o.status === 'booked');
 
-    const totalRevenue = bookedOrders.reduce((sum, o) => sum + Number(o.sellingPrice ?? 0), 0);
+    const totalRevenue = bookedOrders.reduce((sum, o) => sum + Number(o.saleAmount ?? 0), 0);
     const totalProfit = bookedOrders.reduce((sum, o) => sum + Number(o.profit ?? 0), 0);
 
     // Calculate 30-day profit graph data
@@ -228,23 +237,7 @@ export default function LedgerPage() {
                 marginBottom: 40,
             }}>
                 <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: T.fg, margin: '0 0 16px' }}>30-Day Profit Curve</h3>
-                <div style={{ width: '100%', height: 180 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={graphData} margin={{ left: -15, right: 10, top: 5, bottom: 5 }}>
-                            <XAxis dataKey="dateStr" stroke="#d4d4d4" fontSize={9} tickLine={false} axisLine={false} dy={8} />
-                            <YAxis stroke="#d4d4d4" fontSize={9} tickLine={false} axisLine={false} />
-                            <Tooltip content={<CustomTooltip />} />
-                            <Line
-                                type="monotone"
-                                dataKey="profit"
-                                stroke={T.accent}
-                                strokeWidth={2}
-                                dot={false}
-                                activeDot={{ r: 4, strokeWidth: 0, fill: T.accent }}
-                            />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </div>
+                <ProfitChart data={graphData} height={180} />
             </div>
 
             {/* Booked list section */}

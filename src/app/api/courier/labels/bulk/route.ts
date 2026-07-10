@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { logActivity } from '@/lib/courierHelpers';
+import { apiError } from '@/lib/api-error';
 
 export async function POST(request: Request) {
     try {
@@ -41,6 +42,6 @@ export async function POST(request: Request) {
         await logActivity(user.id, 'label_generated', `Bulk generated ${labels.length} labels`, null, 'sync', { count: labels.length });
         return NextResponse.json({ success: true, labels });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

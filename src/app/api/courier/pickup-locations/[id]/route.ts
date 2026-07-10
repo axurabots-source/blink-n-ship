@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { logActivity } from '@/lib/courierHelpers';
+import { apiError } from '@/lib/api-error';
 
 export async function PATCH(
     request: Request,
@@ -29,13 +30,13 @@ export async function PATCH(
         }
 
         const location = await prisma.pickupLocation.update({
-            where: { id },
+            where: { id, userId: user.id },
             data: { name, contactPerson, phone, address, city, area, isDefault, isActive, updatedAt: new Date() },
         });
 
         return NextResponse.json({ location });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }
 
@@ -55,11 +56,11 @@ export async function DELETE(
         });
         if (!existing) return NextResponse.json({ error: 'Location not found' }, { status: 404 });
 
-        await prisma.pickupLocation.delete({ where: { id } });
+        await prisma.pickupLocation.delete({ where: { id, userId: user.id } });
         await logActivity(user.id, 'sync', `Deleted pickup location: ${existing.name}`, id, 'pickup_location');
 
         return NextResponse.json({ success: true });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

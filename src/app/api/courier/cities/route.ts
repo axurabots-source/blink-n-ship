@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { fetchOperationalCities } from '@/lib/flaship';
+import { apiError } from '@/lib/api-error';
+import { log } from '@/lib/logger';
 
 export async function GET() {
     try {
@@ -37,14 +39,14 @@ export async function GET() {
                         orderBy: { name: 'asc' },
                     });
                 }
-            } catch (err: any) {
-                console.error('Error auto-syncing cities:', err.message);
-            }
+    } catch (err: any) {
+        log.error('COURIER', 'Auto-sync cities failed', { error: String(err) });
+    }
         }
 
         return NextResponse.json({ cities });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }
 
@@ -60,22 +62,24 @@ export async function POST() {
         const fetchedCities = data.cities || [];
 
         if (fetchedCities.length > 0) {
-            // Delete existing records to sync freshly
-            await prisma.operationalCity.deleteMany({
-                where: { userId: user.id }
-            });
+            await prisma.$transaction(async (tx) => {
+                // Delete existing records to sync freshly
+                await tx.operationalCity.deleteMany({
+                    where: { userId: user.id }
+                });
 
-            await prisma.operationalCity.createMany({
-                data: fetchedCities.map((c: any) => ({
-                    userId: user.id,
-                    provider: 'flaship',
-                    externalId: c.id,
-                    name: c.name,
-                    code: c.code,
-                    zone: c.zone,
-                    isActive: c.active ?? true,
-                    rawData: c,
-                })),
+                await tx.operationalCity.createMany({
+                    data: fetchedCities.map((c: any) => ({
+                        userId: user.id,
+                        provider: 'flaship',
+                        externalId: c.id,
+                        name: c.name,
+                        code: c.code,
+                        zone: c.zone,
+                        isActive: c.active ?? true,
+                        rawData: c,
+                    })),
+                });
             });
         }
 
@@ -86,7 +90,7 @@ export async function POST() {
 
         return NextResponse.json({ success: true, count: cities.length, cities });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }
 

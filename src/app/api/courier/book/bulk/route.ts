@@ -3,12 +3,20 @@ import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { bulkBookShipments } from '@/lib/flaship';
 import { logActivity } from '@/lib/courierHelpers';
+import { validatePhone } from '@/lib/validation';
+import { apiError } from '@/lib/api-error';
+import { rateLimit, Limit } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
     try {
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
+        const rl = rateLimit('bulk-book', user.id, Limit.booking);
+        if (!rl.success) {
+            return NextResponse.json({ error: 'Too many booking requests. Please wait before trying again.' }, { status: 429 });
+        }
 
         const { orderIds, courierCompany } = await request.json();
         if (!Array.isArray(orderIds) || orderIds.length === 0) {
@@ -31,7 +39,7 @@ export async function POST(request: Request) {
         const orderPayloads = orders.map(order => ({
             orderId: order.id,
             customerName: order.customerName || '',
-            phoneNumber: order.phoneNumber || '',
+            phoneNumber: validatePhone(order.phoneNumber),
             address: order.address || '',
             city: order.city || '',
             weight: Number(order.weight || order.product?.weight || 0.5),
@@ -52,57 +60,61 @@ export async function POST(request: Request) {
             if (!order) continue;
 
             if (res.success && res.data) {
-                const shipment = await prisma.shipment.create({
-                    data: {
-                        userId: user.id,
-                        orderId: order.id,
-                        provider: 'flaship',
-                        pickupLocationId: pickupLocation?.id,
-                        trackingNumber: res.data.trackingId,
-                        cn: res.data.cn,
-                        externalId: res.data.orderNo,
-                        labelUrl: res.data.labelUrl,
-                        status: 'booked',
-                        courierStatus: res.data.courier_status,
-                        weight: Number(order.weight || 0.5),
-                        codAmount: Number(order.sellingPrice || 0),
-                        recipientName: order.customerName,
-                        recipientPhone: order.phoneNumber,
-                        recipientAddress: order.address,
-                        recipientCity: order.city,
-                        bookedAt: new Date(),
-                        bookingResponse: res.data.raw,
-                    },
-                });
-
-                await prisma.shipmentTimeline.create({
-                    data: {
-                        shipmentId: shipment.id,
-                        status: 'booked',
-                        description: 'Bulk booked via Flaship',
-                        source: 'system',
-                        occurredAt: new Date(),
-                    },
-                });
-
-                if (order.productId) {
-                    await prisma.product.update({
-                        where: { id: order.productId },
-                        data: { stockQuantity: { decrement: order.quantity || 1 } },
+                const shipment = await prisma.$transaction(async (tx) => {
+                    const shipment = await tx.shipment.create({
+                        data: {
+                            userId: user.id,
+                            orderId: order.id,
+                            provider: 'flaship',
+                            pickupLocationId: pickupLocation?.id,
+                            trackingNumber: res.data.trackingId,
+                            cn: res.data.cn,
+                            externalId: res.data.orderNo,
+                            labelUrl: res.data.labelUrl,
+                            status: 'booked',
+                            courierStatus: res.data.courier_status,
+                            weight: Number(order.weight || 0.5),
+                            codAmount: Number(order.sellingPrice || 0),
+                            recipientName: order.customerName,
+                            recipientPhone: validatePhone(order.phoneNumber),
+                            recipientAddress: order.address,
+                            recipientCity: order.city,
+                            bookedAt: new Date(),
+                            bookingResponse: res.data.raw,
+                        },
                     });
-                }
 
-                await prisma.order.update({
-                    where: { id: order.id },
-                    data: {
-                        status: 'booked',
-                        trackingNumber: res.data.trackingId,
-                        labelUrl: res.data.labelUrl,
-                        courierProvider: courierCompany || 'flaship_direct',
-                        courierStatus: res.data.courier_status,
-                        shipmentId: shipment.id,
-                        bookedAt: new Date(),
-                    },
+                    await tx.shipmentTimeline.create({
+                        data: {
+                            shipmentId: shipment.id,
+                            status: 'booked',
+                            description: 'Bulk booked via Flaship',
+                            source: 'system',
+                            occurredAt: new Date(),
+                        },
+                    });
+
+                    if (order.productId) {
+                        await tx.product.update({
+                            where: { id: order.productId },
+                            data: { stockQuantity: { decrement: order.quantity || 1 } },
+                        });
+                    }
+
+                    await tx.order.update({
+                        where: { id: order.id },
+                        data: {
+                            status: 'booked',
+                            trackingNumber: res.data.trackingId,
+                            labelUrl: res.data.labelUrl,
+                            courierProvider: courierCompany || 'flaship_direct',
+                            courierStatus: res.data.courier_status,
+                            shipmentId: shipment.id,
+                            bookedAt: new Date(),
+                        },
+                    });
+
+                    return shipment;
                 });
 
                 successCount++;
@@ -115,6 +127,6 @@ export async function POST(request: Request) {
 
         return NextResponse.json({ success: true, successCount, failCount, results });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

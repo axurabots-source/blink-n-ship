@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { logActivity } from '@/lib/courierHelpers';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(
     request: Request,
@@ -48,6 +49,6 @@ export async function GET(
 
         return NextResponse.json({ label, labelUrl: label?.labelUrl || shipment.labelUrl });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

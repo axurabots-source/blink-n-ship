@@ -34,6 +34,12 @@ export async function syncCourierData(
     let totalSkipped = 0;
     let totalSynced = 0;
 
+    async function batchCreate(model: any, data: any[], batchSize = 500) {
+    for (let i = 0; i < data.length; i += batchSize) {
+        await model.createMany({ data: data.slice(i, i + batchSize) });
+    }
+}
+
     // 1. Sync companies
     if (types.includes('companies')) {
         try {
@@ -41,16 +47,13 @@ export async function syncCourierData(
             const companies = data.couriers || [];
             const { valid, skipped } = validateCompanies(companies);
             totalSkipped += skipped.length;
-            
             await prisma.courierCompany.deleteMany({ where: { userId, provider: 'flaship' } });
             if (valid.length > 0) {
-                await prisma.courierCompany.createMany({
-                    data: valid.map((c: any) => ({
-                        userId, provider: 'flaship', externalId: c.id,
-                        name: c.name, code: c.code, isActive: c.active ?? true,
-                        isDefault: c.is_default ?? false, rawData: c,
-                    })),
-                });
+                await batchCreate(prisma.courierCompany, valid.map((c: any) => ({
+                    userId, provider: 'flaship', externalId: c.id,
+                    name: c.name, code: c.code, isActive: c.active ?? true,
+                    isDefault: c.is_default ?? false, rawData: c,
+                })));
             }
             results['companies'] = { success: true, count: valid.length, skipped: skipped.length };
             totalSynced += valid.length;
@@ -66,17 +69,14 @@ export async function syncCourierData(
             const locs = data.locations || [];
             const { valid, skipped } = validatePickupLocations(locs);
             totalSkipped += skipped.length;
-            
             await prisma.pickupLocation.deleteMany({ where: { userId, provider: 'flaship' } });
             if (valid.length > 0) {
-                await prisma.pickupLocation.createMany({
-                    data: valid.map((l: any) => ({
-                        userId, provider: 'flaship', externalId: l.id,
-                        name: l.name, contactPerson: l.contact_person, phone: l.phone,
-                        address: l.address, city: l.city, area: l.area,
-                        isDefault: l.is_default ?? false, rawData: l,
-                    })),
-                });
+                await batchCreate(prisma.pickupLocation, valid.map((l: any) => ({
+                    userId, provider: 'flaship', externalId: l.id,
+                    name: l.name, contactPerson: l.contact_person, phone: l.phone,
+                    address: l.address, city: l.city, area: l.area,
+                    isDefault: l.is_default ?? false, rawData: l,
+                })));
             }
             results['pickup_locations'] = { success: true, count: valid.length, skipped: skipped.length };
             totalSynced += valid.length;
@@ -85,22 +85,19 @@ export async function syncCourierData(
         }
     }
 
-    // 3. Sync cities
+    // 3. Sync cities (batched due to large volume e.g. 2992 cities)
     if (types.includes('cities')) {
         try {
             const data = await fetchOperationalCities(userId);
             const cities = data.cities || [];
             const { valid, skipped } = validateCities(cities);
             totalSkipped += skipped.length;
-            
             await prisma.operationalCity.deleteMany({ where: { userId, provider: 'flaship' } });
             if (valid.length > 0) {
-                await prisma.operationalCity.createMany({
-                    data: valid.map((c: any) => ({
-                        userId, provider: 'flaship', externalId: c.id,
-                        name: c.name, code: c.code, zone: c.zone, isActive: c.active ?? true, rawData: c,
-                    })),
-                });
+                await batchCreate(prisma.operationalCity, valid.map((c: any) => ({
+                    userId, provider: 'flaship', externalId: c.id,
+                    name: c.name, code: c.code, zone: c.zone, isActive: c.active ?? true, rawData: c,
+                })), 500);
             }
             results['cities'] = { success: true, count: valid.length, skipped: skipped.length };
             totalSynced += valid.length;
@@ -116,19 +113,16 @@ export async function syncCourierData(
             const rates = data.rates || [];
             const { valid, skipped } = validateRateCards(rates);
             totalSkipped += skipped.length;
-            
             await prisma.rateCard.deleteMany({ where: { userId, provider: 'flaship' } });
             if (valid.length > 0) {
-                await prisma.rateCard.createMany({
-                    data: valid.map((r: any) => ({
-                        userId, provider: 'flaship', externalId: r.id,
-                        companyCode: r.company_code, serviceType: r.service_type,
-                        originZone: r.origin, destinationZone: r.destination,
-                        weightSlabMin: r.min_w, weightSlabMax: r.max_w,
-                        baseRate: r.base, perKgRate: r.extra, codCharges: r.cod_fee,
-                        fuelSurcharge: r.fuel, rawData: r,
-                    })),
-                });
+                await batchCreate(prisma.rateCard, valid.map((r: any) => ({
+                    userId, provider: 'flaship', externalId: r.id,
+                    companyCode: r.company_code, serviceType: r.service_type,
+                    originZone: r.origin, destinationZone: r.destination,
+                    weightSlabMin: r.min_w, weightSlabMax: r.max_w,
+                    baseRate: r.base, perKgRate: r.extra, codCharges: r.cod_fee,
+                    fuelSurcharge: r.fuel, rawData: r,
+                })));
             }
             results['rate_cards'] = { success: true, count: valid.length, skipped: skipped.length };
             totalSynced += valid.length;

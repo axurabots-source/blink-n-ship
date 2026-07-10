@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
-import { uploadProductImage } from '@/lib/uploadProductImage';
+import { uploadProductImage, validateProductImage } from '@/lib/uploadProductImage';
+import { log } from '@/lib/logger';
 import {
     Plus,
     X,
@@ -57,6 +59,7 @@ const titleCase = (str: string) => {
 };
 
 export default function ProductsPage() {
+    const router = useRouter();
     const [products, setProducts] = useState<Product[]>([]);
     const [profile, setProfile] = useState<Profile | null>(null);
     const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
@@ -98,6 +101,12 @@ export default function ProductsPage() {
         loadProfile();
     }, []);
 
+    useEffect(() => {
+        if (profile && profile.accountType === 'reseller') {
+            router.replace('/dashboard');
+        }
+    }, [profile, router]);
+
     async function refresh() {
         const res = await fetch('/api/products');
         const body = await res.json();
@@ -112,13 +121,17 @@ export default function ProductsPage() {
 
     // Custom XMLHttpRequest upload to show real progress (steps 1 to 10)
     const uploadWithProgress = async (file: File, userId: string): Promise<string> => {
+        const validationError = validateProductImage(file);
+        if (validationError) throw new Error(validationError);
+
         const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
         return new Promise((resolve, reject) => {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${userId}/${Date.now()}.${fileExt}`;
+            const ext = (file.name.split('.').pop() || '').toLowerCase();
+            const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'avif'].includes(ext) ? ext : 'jpg';
+            const fileName = `${userId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${safeExt}`;
             const uploadUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/product-images/${fileName}`;
 
             const xhr = new XMLHttpRequest();
@@ -170,7 +183,7 @@ export default function ProductsPage() {
                     try {
                         imageUrl = await uploadProductImage(imageFile, user.id);
                     } catch (fallbackErr) {
-                        console.warn('Image upload failed, continuing without image:', fallbackErr);
+                        log.warn('API', 'Image upload failed, continuing without image', { error: String(fallbackErr) });
                     }
                 }
             }
@@ -583,19 +596,19 @@ export default function ProductsPage() {
 
                                 <label style={{ display: 'block' }}>
                                     <span style={{ fontSize: '0.72rem', color: T.muted, display: 'block', marginBottom: 4 }}>Cost Price (Rs) *</span>
-                                    <input required type="number" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem' }} />
+                                    <input required type="number" inputMode="decimal" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem' }} />
                                 </label>
 
                                 {profile?.accountType === 'inventory_holder' && (
                                     <label style={{ display: 'block' }}>
                                         <span style={{ fontSize: '0.72rem', color: T.muted, display: 'block', marginBottom: 4 }}>Stock Quantity</span>
-                                        <input type="number" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem' }} />
+                                        <input type="number" inputMode="numeric" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem' }} />
                                     </label>
                                 )}
 
                                 <label style={{ display: 'block' }}>
                                     <span style={{ fontSize: '0.72rem', color: T.muted, display: 'block', marginBottom: 4 }}>Weight (kg)</span>
-                                    <input type="number" step="0.1" value={weight} onChange={(e) => setWeight(e.target.value)} style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem' }} />
+                                    <input type="number" inputMode="decimal" step="0.1" value={weight} onChange={(e) => setWeight(e.target.value)} style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem' }} />
                                 </label>
 
                                 {/* Drag-and-drop Image Upload Zone */}

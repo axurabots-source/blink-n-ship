@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getEligibleLoadsheetOrders, generateLoadsheet } from '@/lib/flaship';
+import { apiError } from '@/lib/api-error';
+import { log } from '@/lib/logger';
 
 const FLASHIP_BASE = process.env.FLASHIP_BASE_URL || 'https://partners.flaship.pk';
 
@@ -21,16 +23,16 @@ export async function POST(request: Request) {
         let eligibleCns: string[] = [];
         try {
             eligibleCns = await getEligibleLoadsheetOrders(user.id);
-            console.log('[Loadsheet] eligible CNs from Flaship:', eligibleCns);
+            log.info('COURIER', 'Loadsheet eligible CNs', { count: eligibleCns?.length });
         } catch (e: any) {
-            console.warn('[Loadsheet] Could not fetch eligible orders, will try with provided CNs:', e.message);
+            log.warn('COURIER', 'Could not fetch eligible orders, using provided CNs', { error: e.message });
             // Fall back to submitting the requested CNs directly
             eligibleCns = cns;
         }
 
         // ── Step 2: filter requested CNs to only those that are eligible ──
         const toSubmit = cns.filter((cn) => eligibleCns.includes(cn));
-        console.log('[Loadsheet] requested:', cns, '→ eligible to submit:', toSubmit);
+        log.info('COURIER', 'Loadsheet requested', { requested: cns?.length, eligible: toSubmit?.length });
 
         if (toSubmit.length === 0) {
             return NextResponse.json({
@@ -44,7 +46,7 @@ export async function POST(request: Request) {
 
         // ── Step 3: generate the loadsheet with eligible CNs ──
         const result = await generateLoadsheet(user.id, toSubmit);
-        console.log('[Loadsheet] raw response:', JSON.stringify(result.raw));
+        log.info('COURIER', 'Loadsheet raw response received');
 
         if (!result.success) {
             const reason = (result.raw as any)?.reason || 'Flaship rejected the loadsheet request.';
@@ -64,6 +66,6 @@ export async function POST(request: Request) {
             submittedCount: toSubmit.length,
         });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { fetchCourierCompanies } from '@/lib/flaship';
+import { apiError } from '@/lib/api-error';
+import { log } from '@/lib/logger';
 
 export async function GET() {
     try {
@@ -12,6 +14,7 @@ export async function GET() {
         let companies = await prisma.courierCompany.findMany({
             where: { userId: user.id },
             orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+            take: 200,
         });
 
         // Auto-sync if DB is empty — same pattern as operational cities
@@ -35,16 +38,17 @@ export async function GET() {
                     companies = await prisma.courierCompany.findMany({
                         where: { userId: user.id },
                         orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+                        take: 200,
                     });
                 }
             } catch (err: any) {
-                console.error('Auto-sync courier companies failed:', err.message);
+                log.error('COURIER', 'Auto-sync companies failed', { error: String(err) });
             }
         }
 
         return NextResponse.json({ companies });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }
 
@@ -59,18 +63,20 @@ export async function POST() {
         const fetched = data.couriers || [];
 
         if (fetched.length > 0) {
-            await prisma.courierCompany.deleteMany({ where: { userId: user.id } });
-            await prisma.courierCompany.createMany({
-                data: fetched.map((c: any) => ({
-                    userId: user.id,
-                    provider: 'flaship',
-                    externalId: c.id,
-                    name: c.name,
-                    code: c.code,
-                    isActive: c.active ?? true,
-                    isDefault: c.is_default ?? false,
-                    rawData: c,
-                })),
+            await prisma.$transaction(async (tx) => {
+                await tx.courierCompany.deleteMany({ where: { userId: user.id } });
+                await tx.courierCompany.createMany({
+                    data: fetched.map((c: any) => ({
+                        userId: user.id,
+                        provider: 'flaship',
+                        externalId: c.id,
+                        name: c.name,
+                        code: c.code,
+                        isActive: c.active ?? true,
+                        isDefault: c.is_default ?? false,
+                        rawData: c,
+                    })),
+                });
             });
         }
 
@@ -81,7 +87,7 @@ export async function POST() {
 
         return NextResponse.json({ success: true, count: companies.length, companies });
     } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return apiError(err);
     }
 }
 

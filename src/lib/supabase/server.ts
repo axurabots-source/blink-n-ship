@@ -15,7 +15,11 @@ export async function createClient() {
                 setAll(cookiesToSet) {
                     try {
                         cookiesToSet.forEach(({ name, value, options }) =>
-                            cookieStore.set(name, value, options)
+                            cookieStore.set(name, value, {
+                                ...options,
+                                secure: true,
+                                sameSite: 'strict',
+                            })
                         );
                     } catch {
                         // Server Component se cookie set karne ki koshish - ignore safe hai
