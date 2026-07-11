@@ -105,8 +105,8 @@ async function apiRequest(
 // GET /company_list/ → { pickupAddress[], companies[], rateCards{}, operations_cities[] }
 // Note: pickupAddress only has {id, address} per Flaship docs (NOT shipperName/shipperPhone)
 // ─────────────────────────────────────────────────────────────────────────────
-export async function verifyAndFetchAccount(userId: string) {
-    const { api_key } = await getCredentials(userId);
+export async function verifyAndFetchAccount(userId: string, directApiKey?: string) {
+    const api_key = directApiKey || (await getCredentials(userId)).api_key;
     const raw = await apiRequest(api_key, '/company_list/', 'GET');
     const normalized = normalizeCompanyList(raw);
     return {

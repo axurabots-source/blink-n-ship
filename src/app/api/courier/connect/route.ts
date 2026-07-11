@@ -33,134 +33,116 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
 
-        // Step 0: Check if already permanently connected
-        const existing = await prisma.courierAccount.findFirst({
-            where: { userId: user.id, provider: 'flaship', isActive: true },
-            select: { id: true, connectedAt: true },
-        });
-        if (existing) {
+        // Step 0: Check existences in parallel to save DB roundtrips
+        const [existingAccount, existingMeta] = await Promise.all([
+            prisma.courierAccount.findFirst({
+                where: { userId: user.id, provider: 'flaship' },
+                select: { id: true, isActive: true },
+            }),
+            prisma.courierAccountMetadata.findFirst({
+                where: { userId: user.id, provider: 'flaship' },
+                select: { id: true },
+            })
+        ]);
+
+        if (existingAccount?.isActive) {
             return NextResponse.json({
                 error: 'A Flaship account is already permanently connected to this Blink N Ship account. For security, this connection cannot be changed or replaced. If you need to connect a different account, please contact support.',
             }, { status: 403 });
         }
 
-        // Step 1: Ensure the user profile exists to prevent foreign key constraint violations
-        let profile = await prisma.profile.findUnique({
-            where: { id: user.id }
-        });
+        // Step 1: Verify key directly via Flaship API before database changes
+        const accountData = await verifyAndFetchAccount(user.id, cleanKey);
 
-        if (!profile) {
-            profile = await prisma.profile.create({
-                data: {
+        const encryptedCredentials = encrypt(JSON.stringify({ api_key: cleanKey }));
+        const accountId = existingAccount?.id ?? '00000000-0000-0000-0000-000000000000';
+        const metaId = existingMeta?.id ?? '00000000-0000-0000-0000-000000000000';
+
+        // Step 2: Execute all database writes in parallel
+        await Promise.all([
+            prisma.profile.upsert({
+                where: { id: user.id },
+                update: { flashipConnected: true },
+                create: {
                     id: user.id,
                     businessName: user.user_metadata?.business_name || 'My Business',
                     accountType: user.user_metadata?.account_type || 'reseller',
-                    flashipConnected: false,
-                }
-            });
-        }
+                    flashipConnected: true,
+                },
+            }),
+            prisma.courierAccount.upsert({
+                where: { id: accountId },
+                update: {
+                    encryptedCredentials,
+                    isActive: true,
+                    lastVerifiedAt: new Date(),
+                    updatedAt: new Date(),
+                },
+                create: {
+                    userId: user.id,
+                    provider: 'flaship',
+                    authMethod: 'api_key',
+                    encryptedCredentials,
+                    isActive: true,
+                    connectedAt: new Date(),
+                    lastVerifiedAt: new Date(),
+                },
+            }),
+            prisma.courierAccountMetadata.upsert({
+                where: { id: metaId },
+                update: {
+                    accountName: accountData.businessName,
+                    phone: accountData.phone,
+                    rawMetadata: accountData.raw,
+                    fetchedAt: new Date(),
+                    updatedAt: new Date(),
+                },
+                create: {
+                    userId: user.id,
+                    provider: 'flaship',
+                    accountName: accountData.businessName,
+                    phone: accountData.phone,
+                    rawMetadata: accountData.raw,
+                    fetchedAt: new Date(),
+                },
+            }),
+            prisma.courierSettings.upsert({
+                where: { userId: user.id },
+                update: {},
+                create: { userId: user.id, defaultProvider: 'flaship' },
+            }),
+            logActivity(user.id, 'connect', 'Connected to Flaship successfully. Reference data sync started in background.', null, null, { accountName: accountData.businessName }),
+        ]);
 
-        // Step 1: Store encrypted credentials temporarily to allow verifyAndFetchAccount
-        const encryptedCredentials = encrypt(JSON.stringify({ api_key: cleanKey }));
-
-        // Upsert courier account record
-        await prisma.courierAccount.upsert({
-            where: {
-                id: (await prisma.courierAccount.findFirst({
-                    where: { userId: user.id, provider: 'flaship' },
-                    select: { id: true },
-                }))?.id ?? '00000000-0000-0000-0000-000000000000',
-            },
-            update: {
-                encryptedCredentials,
-                isActive: true,
-                lastVerifiedAt: new Date(),
-                updatedAt: new Date(),
-            },
-            create: {
-                userId: user.id,
-                provider: 'flaship',
-                authMethod: 'api_key',
-                encryptedCredentials,
-                isActive: true,
-                connectedAt: new Date(),
-                lastVerifiedAt: new Date(),
-            },
-        });
-
-        // Step 2: Verify connection and fetch account metadata
-        const accountData = await verifyAndFetchAccount(user.id);
-
-        // Step 3: Upsert account metadata with real business name + phone
-        await prisma.courierAccountMetadata.upsert({
-            where: {
-                id: (await prisma.courierAccountMetadata.findFirst({
-                    where: { userId: user.id, provider: 'flaship' },
-                    select: { id: true },
-                }))?.id ?? '00000000-0000-0000-0000-000000000000',
-            },
-            update: {
-                accountName: accountData.businessName,
-                phone: accountData.phone,
-                rawMetadata: accountData.raw,
-                fetchedAt: new Date(),
-                updatedAt: new Date(),
-            },
-            create: {
-                userId: user.id,
-                provider: 'flaship',
-                accountName: accountData.businessName,
-                phone: accountData.phone,
-                rawMetadata: accountData.raw,
-                fetchedAt: new Date(),
-            },
-        });
-
-        // Step 4: Update profile flashipConnected flag
-        await prisma.profile.update({
-            where: { id: user.id },
-            data: { flashipConnected: true },
-        });
-
-        // Create default courier settings if not existing
-        await prisma.courierSettings.upsert({
-            where: { userId: user.id },
-            update: {},
-            create: { userId: user.id, defaultProvider: 'flaship' },
-        });
-
-        // Trigger automatic database synchronization for master data.
-        // On reconnect, the data is already in the DB — skip the expensive full sync.
-        // Only run it on first-time connection (no companies in DB yet).
-        let syncOutcome = { success: true, totalSynced: 0, totalSkipped: 0 };
-        try {
-            const existingCompanyCount = await prisma.courierCompany.count({
-                where: { userId: user.id, provider: 'flaship' },
-            });
-
+        // Trigger automatic database synchronization in the background.
+        prisma.courierCompany.count({
+            where: { userId: user.id, provider: 'flaship' },
+        }).then((existingCompanyCount) => {
             if (existingCompanyCount === 0) {
-                // First-time connection: sync everything from Flaship
-                syncOutcome = await syncCourierData(user.id, ['companies', 'pickup_locations', 'cities', 'rate_cards']);
+                log.info('COURIER', `Starting background auto-sync for user ${user.id}`);
+                syncCourierData(user.id, ['companies', 'pickup_locations', 'cities', 'rate_cards'])
+                    .then((syncOutcome) => {
+                        log.info('COURIER', `Background auto-sync completed for user ${user.id}`, { success: syncOutcome.success });
+                    })
+                    .catch((syncErr) => {
+                        log.error('COURIER', `Background auto-sync job failed for user ${user.id}`, { error: String(syncErr) });
+                    });
             } else {
-                // Reconnect: data already exists, skip the full sync to avoid delays
-                log.info('COURIER', 'Sync skipped — data already exists (reconnect)');
+                log.info('COURIER', `Sync skipped — data already exists (reconnect) for user ${user.id}`);
             }
-        } catch (syncErr: any) {
-            log.error('COURIER', 'Auto-sync failed after connect', { error: String(syncErr) });
-        }
-
-        await logActivity(user.id, 'connect', `Connected to Flaship successfully. Sync: ${syncOutcome.totalSynced > 0 ? `${syncOutcome.totalSynced} records synced` : 'skipped (data already present)'}`, null, null, { accountName: accountData.businessName });
-
+        }).catch((err) => {
+            log.error('COURIER', `Background count check failed for user ${user.id}`, { error: String(err) });
+        });
 
         return NextResponse.json({
             success: true,
             account: accountData,
             synced: {
-                locations: syncOutcome.success,
-                companies: syncOutcome.success,
-                services: syncOutcome.success,
-                cities: syncOutcome.success,
-                rates: syncOutcome.success,
+                locations: true,
+                companies: true,
+                services: true,
+                cities: true,
+                rates: true,
             },
         });
     } catch (err: any) {

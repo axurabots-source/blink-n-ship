@@ -383,20 +383,17 @@ export default function LoginPage() {
 
         if (authError) { setError(authError.message); setLoading(false); return; }
 
-        if (isSignup) {
-            try {
-                await fetch('/api/profile', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ businessName: businessName.trim(), phone: phone.trim() }),
-                });
-            } catch { /* non-critical */ }
-        }
-
         setLoading(false);
-        localStorage.removeItem('bns_account_type');
         const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
-        router.push(isSignup ? '/account-type' : (isMobile ? '/courier/connect' : '/dashboard'));
+        if (isSignup) {
+            localStorage.removeItem('bns_account_type');
+            const params = new URLSearchParams();
+            if (businessName.trim()) params.set('businessName', businessName.trim());
+            if (phone.trim()) params.set('phone', phone.trim());
+            router.push('/account-type?' + params.toString());
+        } else {
+            router.push(isMobile ? '/courier/connect' : '/dashboard');
+        }
         router.refresh();
     }
 

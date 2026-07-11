@@ -70,6 +70,19 @@ export default function AppSidebar() {
                 if (b.profile?.accountType) {
                     setAccountType(b.profile.accountType);
                     localStorage.setItem('bns_account_type', b.profile.accountType);
+                } else if (!cached && b.profile === null) {
+                    // Profile doesn't exist yet — try again after a short delay
+                    setTimeout(() => {
+                        fetch('/api/profile')
+                            .then(r => r.json())
+                            .then(b2 => {
+                                if (b2.profile?.accountType) {
+                                    setAccountType(b2.profile.accountType);
+                                    localStorage.setItem('bns_account_type', b2.profile.accountType);
+                                }
+                            })
+                            .catch(() => {});
+                    }, 2000);
                 }
             })
             .catch(() => {/* profile fetch is non-critical */});

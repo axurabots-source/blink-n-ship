@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Boxes, ShoppingBag, Check } from 'lucide-react';
 
@@ -34,11 +34,14 @@ const itemVariants = {
     show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const } },
 };
 
-export default function AccountTypePage() {
+function AccountTypeContent() {
     const [selectedType, setSelectedType] = useState<'inventory_holder' | 'reseller' | null>(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const signupBusinessName = searchParams.get('businessName') || '';
+    const signupPhone = searchParams.get('phone') || '';
 
     async function choose(type: 'inventory_holder' | 'reseller') {
         setSelectedType(type);
@@ -46,10 +49,13 @@ export default function AccountTypePage() {
         setError('');
 
         try {
+            const body: Record<string, any> = { account_type: type };
+            if (signupBusinessName) body.business_name = signupBusinessName;
+            if (signupPhone) body.phone = signupPhone;
             const res = await fetch('/api/account/account-type', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ account_type: type }),
+                body: JSON.stringify(body),
             });
 
             if (!res.ok) {
@@ -57,7 +63,7 @@ export default function AccountTypePage() {
                 throw new Error(body.error || 'Something went wrong');
             }
 
-            localStorage.removeItem('bns_account_type');
+            localStorage.setItem('bns_account_type', type);
             router.push('/connect-courier');
         } catch (err: any) {
             setError(err.message);
@@ -302,5 +308,17 @@ export default function AccountTypePage() {
                 )}
             </motion.div>
         </div>
+    );
+}
+
+export default function AccountTypePage() {
+    return (
+        <Suspense fallback={
+            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-geist-sans), sans-serif' }}>
+                <p style={{ color: '#737373', fontSize: '0.875rem' }}>Loading...</p>
+            </div>
+        }>
+            <AccountTypeContent />
+        </Suspense>
     );
 }

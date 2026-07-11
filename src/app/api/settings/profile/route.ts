@@ -11,8 +11,47 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-    const profile = await prisma.profile.findUnique({ where: { id: user.id } });
-    if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    let profile = await prisma.profile.findUnique({ where: { id: user.id } });
+    
+    if (!profile) {
+      // Auto-create profile from auth metadata
+      profile = await prisma.profile.create({
+        data: {
+          id: user.id,
+          businessName: user.user_metadata?.business_name || user.user_metadata?.businessName || 'My Business',
+          accountType: user.user_metadata?.account_type || 'reseller',
+          email: user.email || null,
+          phone: user.phone || user.user_metadata?.phone || null,
+          flashipConnected: false,
+        }
+      });
+    } else {
+      // Check if some fields are missing and auto-sync them from auth user data
+      const updates: Record<string, any> = {};
+      let needsUpdate = false;
+
+      if (!profile.email && user.email) {
+        updates.email = user.email;
+        needsUpdate = true;
+      }
+      const fallbackPhone = user.phone || user.user_metadata?.phone;
+      if (!profile.phone && fallbackPhone) {
+        updates.phone = fallbackPhone;
+        needsUpdate = true;
+      }
+      const fallbackBusiness = user.user_metadata?.business_name || user.user_metadata?.businessName;
+      if (!profile.businessName && fallbackBusiness) {
+        updates.businessName = fallbackBusiness;
+        needsUpdate = true;
+      }
+
+      if (needsUpdate) {
+        profile = await prisma.profile.update({
+          where: { id: user.id },
+          data: updates,
+        });
+      }
+    }
 
     const { id, ...rest } = profile;
     return NextResponse.json({ profile: { id, ...rest } });

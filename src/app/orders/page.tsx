@@ -716,6 +716,7 @@ export default function OrdersPage() {
     if (selectedDrafts.size === 0) return;
 
     setError("");
+    setBooking(true);
 
     // Step 1: Refresh merchant data from local DB before validating
     let freshCities = dbCities;
@@ -739,6 +740,7 @@ export default function OrdersPage() {
       setError(
         "Failed to refresh merchant data before booking. Please try again.",
       );
+      setBooking(false);
       return;
     }
 
@@ -829,6 +831,7 @@ export default function OrdersPage() {
           }
         }
       }, 100);
+      setBooking(false);
       return;
     }
 
@@ -841,13 +844,13 @@ export default function OrdersPage() {
       setError(
         "Please uncheck or fix orders with invalid numbers before booking.",
       );
+      setBooking(false);
       return;
     }
 
     const selectedIds = new Set(selectedDrafts);
 
     toast("info", "Booking parcels...");
-    setBooking(true);
 
     try {
       const res = await fetch("/api/orders/book", {
@@ -2508,6 +2511,25 @@ export default function OrdersPage() {
                                 />
                               </>
                             ) : (() => {
+                              if (products.length === 0) {
+                                return (
+                                  <div style={{
+                                    border: '1px solid #fecaca',
+                                    background: '#fef2f2',
+                                    borderRadius: 8,
+                                    padding: '12px 14px',
+                                    fontSize: '0.85rem',
+                                    color: '#b91c1c',
+                                    fontWeight: 500,
+                                  }}>
+                                    ⚠ No inventory found.{' '}
+                                    <a href="/products" style={{ color: '#CC785C', textDecoration: 'underline' }}>
+                                      Add products to your inventory
+                                    </a>{' '}
+                                    first, or switch to a Reseller account type.
+                                  </div>
+                                );
+                              }
                               const items = orderItemsMap[order.id] || [];
                               const isOpen = !!productDropdownOpen[order.id];
                               const searchTerm = (
