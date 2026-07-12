@@ -392,6 +392,8 @@ export default function LoginPage() {
             if (phone.trim()) params.set('phone', phone.trim());
             router.push('/account-type?' + params.toString());
         } else {
+            // Clear stale account type so sidebar always re-fetches fresh from DB
+            localStorage.removeItem('bns_account_type');
             router.push(isMobile ? '/courier/connect' : '/dashboard');
         }
         router.refresh();

@@ -120,6 +120,16 @@ export default function OrdersPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, Set<string>>>(
     {},
   );
+  // Hydrate orderItemsMap from API-loaded orders (items are not in local state initially)
+  function hydrateItemsFromOrders(orders: Order[]) {
+    const map: Record<string, OrderItem[]> = {};
+    for (const o of orders) {
+      if (o.items && o.items.length > 0) {
+        map[o.id] = o.items.map((item) => ({ ...item }));
+      }
+    }
+    setOrderItemsMap((prev) => ({ ...prev, ...map }));
+  }
   // Order items per order (multi-product support)
   const [orderItemsMap, setOrderItemsMap] = useState<
     Record<string, OrderItem[]>
@@ -208,7 +218,10 @@ export default function OrdersPage() {
     // Hydrate state from memory cache instantly
     const cache = (window as any).__BNS_CACHE__;
     if (cache) {
-      if (cache.orders) setOrders(cache.orders);
+      if (cache.orders) {
+        setOrders(cache.orders);
+        hydrateItemsFromOrders(cache.orders);
+      }
       if (cache.profile) setProfile(cache.profile);
       if (cache.products) {
         setProducts(cache.products);
@@ -374,6 +387,7 @@ export default function OrdersPage() {
       const body = await res.json();
       const fetchedOrders = body.orders || [];
       setOrders(fetchedOrders);
+      hydrateItemsFromOrders(fetchedOrders);
       if (body.profile) {
         setProfile(body.profile);
       }
@@ -537,7 +551,10 @@ export default function OrdersPage() {
     setOrderItemsMap((prev) => {
       const existing = [...(prev[orderId] || [])];
       existing.push(newItem);
-      return { ...prev, [orderId]: existing };
+      const updated = { ...prev, [orderId]: existing };
+      // Persist immediately so items survive navigation
+      saveFieldsBatch(orderId, { orderItems: existing });
+      return updated;
     });
 
     // If it's a real inventory product, auto-set first product's details on order
@@ -687,28 +704,49 @@ export default function OrdersPage() {
   }
 
   async function performDeleteDrafts() {
-    setDeleting(true);
     setError("");
-    try {
-      const ids =
-        deletingTarget === "bulk-draft"
-          ? Array.from(selectedDrafts)
-          : deletingTarget
-            ? [deletingTarget]
-            : [];
-      for (const id of ids) {
-        await fetch(`/api/orders/${id}`, { method: "DELETE" });
-      }
-      toast("success", `${ids.length} draft(s) deleted`);
+    const ids =
+      deletingTarget === "bulk-draft"
+        ? Array.from(selectedDrafts)
+        : deletingTarget
+          ? [deletingTarget]
+          : [];
+
+    if (ids.length === 0) return;
+
+    // Optimistically remove from state instantly
+    setOrders((prev) => prev.filter((o) => !ids.includes(o.id)));
+    if (deletingTarget === "bulk-draft") {
       setSelectedDrafts(new Set());
-      await refresh();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setDeleting(false);
-      setDeletingTarget(null);
-      setDeleteProgress(null);
+    } else {
+      setSelectedDrafts((prev) => {
+        const next = new Set(prev);
+        next.delete(deletingTarget as string);
+        return next;
+      });
     }
+
+    setDeleting(false);
+    setDeletingTarget(null);
+    setDeleteProgress(null);
+
+    // Perform deletions in the background concurrently
+    Promise.all(
+      ids.map((id) =>
+        fetch(`/api/orders/${id}`, { method: "DELETE" }).then((res) => {
+          if (!res.ok) throw new Error(`Failed to delete order ${id}`);
+          return res;
+        })
+      )
+    )
+      .then(() => {
+        toast("success", `${ids.length} draft(s) deleted`);
+        refresh();
+      })
+      .catch((err: any) => {
+        toast("error", "Failed to delete some drafts");
+        refresh();
+      });
   }
 
   // Book selected drafts
@@ -850,37 +888,50 @@ export default function OrdersPage() {
 
     const selectedIds = new Set(selectedDrafts);
 
-    toast("info", "Booking parcels...");
+    toast("info", "Booking parcels in background...");
 
-    try {
-      const res = await fetch("/api/orders/book", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          order_ids: Array.from(selectedIds),
-          orderCouriers: selectedCourier,
-        }),
+    // Optimistically transition status locally
+    setOrders((prev) =>
+      prev.map((o) =>
+        selectedIds.has(o.id) ? { ...o, status: "booked", bookedAt: new Date().toISOString() } : o
+      )
+    );
+    setSelectedDrafts(new Set());
+    setActiveTab("booked");
+    setBooking(false); // Close loader immediately
+
+    // Perform booking API call in background
+    fetch("/api/orders/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        order_ids: Array.from(selectedIds),
+        orderCouriers: selectedCourier,
+      }),
+    })
+      .then(async (res) => {
+        const body = await res.json();
+        const failed = body.results?.filter((r: any) => !r.success) ?? [];
+        const bookedCount = selectedIds.size - failed.length;
+
+        if (failed.length > 0) {
+          toast("error", `${failed.length} order(s) failed: ${failed[0].error}`);
+        } else if (!res.ok) {
+          toast("error", body.error || "Booking failed.");
+        }
+
+        if (bookedCount > 0) {
+          toast("success", `${bookedCount} parcel(s) booked successfully`);
+        }
+
+        // Re-sync with database to ensure exact state matching
+        refresh();
+        loadProducts();
+      })
+      .catch((err) => {
+        toast("error", "Background booking error: " + err.message);
+        refresh();
       });
-      const body = await res.json();
-      const failed = body.results?.filter((r: any) => !r.success) ?? [];
-      if (failed.length > 0) {
-        setError(`${failed.length} order(s) failed: ${failed[0].error}`);
-      } else if (!res.ok) {
-        setError(body.error || "Booking failed.");
-      }
-      const bookedCount = selectedIds.size - failed.length;
-      if (bookedCount > 0) {
-        toast("success", `${bookedCount} parcel(s) booked successfully`);
-      }
-      setSelectedDrafts(new Set());
-      setActiveTab("booked");
-      await refresh();
-      await loadProducts();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setBooking(false);
-    }
   }
 
   // Unbook single booked order — animated

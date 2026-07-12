@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Boxes, ShoppingBag, Check } from 'lucide-react';
 
@@ -38,7 +38,6 @@ function AccountTypeContent() {
     const [selectedType, setSelectedType] = useState<'inventory_holder' | 'reseller' | null>(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
-    const router = useRouter();
     const searchParams = useSearchParams();
     const signupBusinessName = searchParams.get('businessName') || '';
     const signupPhone = searchParams.get('phone') || '';
@@ -63,8 +62,14 @@ function AccountTypeContent() {
                 throw new Error(body.error || 'Something went wrong');
             }
 
+            // Clear any stale entry first, then write the confirmed new type
+            localStorage.removeItem('bns_account_type');
             localStorage.setItem('bns_account_type', type);
-            router.push('/connect-courier');
+
+            // Hard navigate so the root layout (AppSidebar) remounts and
+            // re-fetches accountType from DB — client-side router.push()
+            // leaves the sidebar mounted with stale state.
+            window.location.href = '/courier/connect';
         } catch (err: any) {
             setError(err.message);
             setSaving(false);

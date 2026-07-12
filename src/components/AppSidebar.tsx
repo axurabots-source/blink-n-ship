@@ -61,16 +61,16 @@ export default function AppSidebar() {
     }, [pathname, isCourierRoute]);
 
     useEffect(() => {
-        const cached = localStorage.getItem('bns_account_type');
-        if (cached) setAccountType(cached);
-
+        // Always fetch from DB as source of truth to prevent stale localStorage
+        // from showing wrong portal (e.g. inventory_holder for a reseller user)
         fetch('/api/profile')
             .then(r => r.json())
             .then(b => {
                 if (b.profile?.accountType) {
                     setAccountType(b.profile.accountType);
+                    // Sync localStorage with the confirmed DB value
                     localStorage.setItem('bns_account_type', b.profile.accountType);
-                } else if (!cached && b.profile === null) {
+                } else if (b.profile === null) {
                     // Profile doesn't exist yet — try again after a short delay
                     setTimeout(() => {
                         fetch('/api/profile')
@@ -85,7 +85,11 @@ export default function AppSidebar() {
                     }, 2000);
                 }
             })
-            .catch(() => {/* profile fetch is non-critical */});
+            .catch(() => {
+                // Fallback to localStorage only if network fails
+                const cached = localStorage.getItem('bns_account_type');
+                if (cached) setAccountType(cached);
+            });
     }, []);
 
     useEffect(() => {
