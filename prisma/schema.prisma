@@ -687,19 +687,6 @@ model UserSession {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BUDDY CODES (gatekeeper access codes for registration / login)
-// ─────────────────────────────────────────────────────────────────────────────
-
-model BuddyCode {
-  id        String   @id @default(uuid()) @db.Uuid
-  code      String   @unique
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@map("buddy_codes")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // ACTIVITY LOGS (business audit trail — separate from courier logs)
 // ─────────────────────────────────────────────────────────────────────────────
 

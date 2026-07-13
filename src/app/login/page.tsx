@@ -356,7 +356,6 @@ export default function LoginPage() {
     const [password, setPassword] = useState('');
     const [businessName, setBusinessName] = useState('');
     const [phone, setPhone] = useState('');
-    const [buddyCode, setBuddyCode] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -364,7 +363,7 @@ export default function LoginPage() {
     const supabase = createClient();
 
     useEffect(() => {
-        setError(''); setEmail(''); setPassword(''); setBusinessName(''); setPhone(''); setBuddyCode('');
+        setError(''); setEmail(''); setPassword(''); setBusinessName(''); setPhone('');
     }, [isSignup]);
 
     async function handleSubmit(e: React.FormEvent) {
@@ -372,47 +371,26 @@ export default function LoginPage() {
         setError('');
         setLoading(true);
 
-        if (!buddyCode.trim()) {
-            setError('Please enter your buddy code.');
-            setLoading(false);
-            return;
-        }
-
-        // Verify buddy code
-        try {
-            const res = await fetch('/api/buddy-codes/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: buddyCode.trim() }),
-            });
-            const data = await res.json();
-            if (!data.valid) {
-                setError(data.message || 'Invalid buddy code.');
-                setLoading(false);
-                return;
-            }
-        } catch {
-            setError('Failed to verify buddy code. Please try again.');
-            setLoading(false);
-            return;
-        }
-
         if (isSignup && (!businessName.trim() || !phone.trim())) {
             setError('Please enter your business name and phone number.');
             setLoading(false);
             return;
         }
 
+        const { error: authError } = isSignup
+            ? await supabase.auth.signUp({ email, password })
+            : await supabase.auth.signInWithPassword({ email, password });
+
+        if (authError) { setError(authError.message); setLoading(false); return; }
+
+        setLoading(false);
+        const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
         if (isSignup) {
-            const { error: authError } = await supabase.auth.signUp({ email, password });
-            if (authError) { setError(authError.message); setLoading(false); return; }
-            setLoading(false);
-            // Redirect to OTP verification; carry signup metadata forward
+            localStorage.removeItem('bns_account_type');
             const params = new URLSearchParams();
-            params.set('email', email.trim());
             if (businessName.trim()) params.set('businessName', businessName.trim());
             if (phone.trim()) params.set('phone', phone.trim());
-            router.push('/verify?' + params.toString());
+            router.push('/account-type?' + params.toString());
         } else {
             const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
             if (authError) { setError(authError.message); setLoading(false); return; }
@@ -507,7 +485,6 @@ export default function LoginPage() {
                             </p>
 
                             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                <InputField type="text" placeholder="Buddy code" inputMode="text" autoComplete="off" value={buddyCode} onChange={setBuddyCode} required />
                                 {isSignup && (
                                     <>
                                         <InputField type="text" placeholder="Business name" inputMode="text" autoComplete="organization" value={businessName} onChange={setBusinessName} required />
