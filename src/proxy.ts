@@ -39,7 +39,7 @@ const API_PREFIX = '/api/';
 const MAX_BODY_SIZE = 100_000;
 
 // Routes that never require an authenticated session
-const PUBLIC_ROUTES = ['/login', '/verify', '/forgot-password', '/reset-password'];
+const PUBLIC_ROUTES = ['/login', '/verify', '/forgot-password', '/reset-password', '/auth/callback'];
 
 function isPageRequest(req: NextRequest): boolean {
   const accept = req.headers.get('accept') || '';
@@ -97,6 +97,10 @@ export async function proxy(req: NextRequest) {
 
       if (!session) {
         return NextResponse.redirect(new URL('/login', req.url));
+      }
+
+      if (!session.user?.email_confirmed_at) {
+        return NextResponse.redirect(new URL('/login?verify=1', req.url));
       }
     }
   }

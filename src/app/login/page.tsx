@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Truck, Eye, EyeOff } from 'lucide-react';
+import { Truck, Eye, EyeOff, MailCheck, Mail, RefreshCw } from 'lucide-react';
 
 // ─── Animated Canvas Background ───────────────────────────────────────────────
 function AnimatedBG() {
@@ -359,17 +359,34 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [showVerifyMessage, setShowVerifyMessage] = useState(false);
+    const [verifyEmail, setVerifyEmail] = useState('');
+    const [resending, setResending] = useState(false);
+    const [showVerifiedMessage, setShowVerifiedMessage] = useState(false);
+    const [showVerifyRequiredMessage, setShowVerifyRequiredMessage] = useState(false);
     const router = useRouter();
     const supabase = createClient();
 
     useEffect(() => {
         setError(''); setEmail(''); setPassword(''); setBusinessName(''); setPhone('');
+        setShowVerifyMessage(false); setVerifyEmail('');
+        setShowVerifiedMessage(false); setShowVerifyRequiredMessage(false);
     }, [isSignup]);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('verified') === '1') {
+            setShowVerifiedMessage(true);
+        } else if (params.get('verify') === '1') {
+            setShowVerifyRequiredMessage(true);
+        }
+    }, []);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         setError('');
         setLoading(true);
+        setShowVerifyMessage(false);
 
         if (isSignup && (!businessName.trim() || !phone.trim())) {
             setError('Please enter your business name and phone number.');
@@ -377,29 +394,60 @@ export default function LoginPage() {
             return;
         }
 
-        const { error: authError } = isSignup
-            ? await supabase.auth.signUp({ email, password })
-            : await supabase.auth.signInWithPassword({ email, password });
-
-        if (authError) { setError(authError.message); setLoading(false); return; }
-
-        setLoading(false);
-        const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
         if (isSignup) {
+            const { data, error: authError } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    emailRedirectTo: `${window.location.origin}/auth/callback`,
+                },
+            });
+            if (authError) { setError(authError.message); setLoading(false); return; }
+            setLoading(false);
+
+            if (!data.session) {
+                setVerifyEmail(email);
+                setShowVerifyMessage(true);
+                return;
+            }
+
             localStorage.removeItem('bns_account_type');
             const params = new URLSearchParams();
             if (businessName.trim()) params.set('businessName', businessName.trim());
             if (phone.trim()) params.set('phone', phone.trim());
             router.push('/account-type?' + params.toString());
         } else {
-            const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-            if (authError) { setError(authError.message); setLoading(false); return; }
+            const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+            if (signInError) { setError(signInError.message); setLoading(false); return; }
             setLoading(false);
-            // Clear stale account type so sidebar always re-fetches fresh from DB
+
+            if (!signInData.user?.email_confirmed_at) {
+                setVerifyEmail(email);
+                setShowVerifyMessage(true);
+                setError('Please verify your email before signing in. Check your inbox.');
+                return;
+            }
+
             localStorage.removeItem('bns_account_type');
             const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
             router.push(isMobile ? '/courier/connect' : '/dashboard');
             router.refresh();
+        }
+    }
+
+    async function handleResendVerification() {
+        if (!verifyEmail) return;
+        setResending(true);
+        setError('');
+        const { error: resendError } = await supabase.auth.resend({
+            type: 'signup',
+            email: verifyEmail,
+        });
+        setResending(false);
+        if (resendError) {
+            setError(resendError.message);
+        } else {
+            setError('Verification email resent. Please check your inbox.');
         }
     }
 
@@ -469,6 +517,102 @@ export default function LoginPage() {
                 {/* Right / Bottom panel — form */}
                 <div className="login-right-panel">
                     <AnimatePresence mode="wait">
+                        {showVerifyMessage ? (
+                            <motion.div
+                                key="verify"
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -20 }}
+                                transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                                style={{ width: '100%', maxWidth: 380, textAlign: 'center' }}
+                            >
+                                <div style={{
+                                    width: 56, height: 56, borderRadius: '50%',
+                                    background: '#fff5f0', display: 'flex', alignItems: 'center',
+                                    justifyContent: 'center', margin: '0 auto 20px',
+                                }}>
+                                    <MailCheck size={28} color="#CC785C" />
+                                </div>
+
+                                <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.03em', marginBottom: 8 }}>
+                                    Verify your email
+                                </h1>
+                                <p style={{ fontSize: '0.85rem', color: '#737373', marginBottom: 8, lineHeight: 1.6 }}>
+                                    We sent a verification email to <strong style={{ color: '#0a0a0a' }}>{verifyEmail}</strong>.
+                                    Please check your inbox and click the link to activate your account.
+                                </p>
+                                <p style={{ fontSize: '0.8rem', color: '#a3a3a3', marginBottom: 28 }}>
+                                    Didn't receive it? Check your spam folder or resend below.
+                                </p>
+
+                                <AnimatePresence>
+                                    {error && (
+                                        <motion.div
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: 'auto' }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            transition={{ duration: 0.22 }}
+                                            style={{ overflow: 'hidden', marginBottom: 16 }}
+                                        >
+                                            <div style={{ padding: '0.75rem', background: error.includes('resent') ? '#f0fdf4' : '#fff5f5', border: `1px solid ${error.includes('resent') ? '#bbf7d0' : '#fecaca'}`, borderRadius: '0.75rem' }}>
+                                                <span style={{ fontSize: '0.8rem', color: error.includes('resent') ? '#16a34a' : '#e05252' }}>
+                                                    {error.includes('resent') ? '✓ ' : '⚠ '}{error}
+                                                </span>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+
+                                <motion.button
+                                    onClick={handleResendVerification}
+                                    disabled={resending}
+                                    whileHover={{ scale: 1.015 }}
+                                    whileTap={{ scale: 0.975 }}
+                                    style={{
+                                        width: '100%',
+                                        padding: '0.9rem',
+                                        borderRadius: '0.75rem',
+                                        background: '#CC785C',
+                                        color: '#ffffff',
+                                        fontSize: '0.875rem',
+                                        fontWeight: 600,
+                                        border: 'none',
+                                        cursor: resending ? 'not-allowed' : 'pointer',
+                                        opacity: resending ? 0.8 : 1,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: 8,
+                                        marginBottom: 12,
+                                    }}
+                                >
+                                    {resending ? <Spinner /> : <RefreshCw size={16} />}
+                                    {resending ? 'Resending...' : 'Resend Verification Email'}
+                                </motion.button>
+
+                                <motion.button
+                                    onClick={() => { setShowVerifyMessage(false); setError(''); }}
+                                    whileHover={{ borderColor: '#CC785C', color: '#CC785C' }}
+                                    style={{
+                                        width: '100%',
+                                        padding: '0.75rem',
+                                        borderRadius: '0.75rem',
+                                        border: '1.5px solid #e5e5e5',
+                                        background: 'transparent',
+                                        fontSize: '0.875rem',
+                                        color: '#737373',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    Back to sign in
+                                </motion.button>
+
+                                <p style={{ fontSize: '0.75rem', color: '#a3a3a3', marginTop: 24 }}>
+                                    <Mail size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                                    Make sure to check your spam/promotions folder
+                                </p>
+                            </motion.div>
+                        ) : (
                         <motion.div
                             key={isSignup ? 'signup' : 'login'}
                             initial={{ opacity: 0, x: isSignup ? 60 : -60 }}
@@ -483,6 +627,32 @@ export default function LoginPage() {
                             <p style={{ fontSize: '0.875rem', color: '#737373', marginBottom: 36 }}>
                                 {isSignup ? 'Start processing orders today' : 'Sign in to your account'}
                             </p>
+
+                            {showVerifiedMessage && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    style={{ overflow: 'hidden', marginBottom: 16 }}
+                                >
+                                    <div style={{ padding: '0.75rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <MailCheck size={16} color="#16a34a" />
+                                        <span style={{ fontSize: '0.8rem', color: '#16a34a' }}>Email verified! You can now sign in.</span>
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            {showVerifyRequiredMessage && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    style={{ overflow: 'hidden', marginBottom: 16 }}
+                                >
+                                    <div style={{ padding: '0.75rem', background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <Mail size={16} color="#e05252" />
+                                        <span style={{ fontSize: '0.8rem', color: '#e05252' }}>Please verify your email before accessing the app.</span>
+                                    </div>
+                                </motion.div>
+                            )}
 
                             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                                 {isSignup && (
@@ -544,7 +714,7 @@ export default function LoginPage() {
                                 )}
 
                                 <AnimatePresence>
-                                    {error && (
+                                    {error && !showVerifyMessage && (
                                         <motion.div
                                             initial={{ opacity: 0, height: 0 }}
                                             animate={{ opacity: 1, height: 'auto' }}
@@ -615,6 +785,7 @@ export default function LoginPage() {
                                 </span>
                             </motion.button>
                         </motion.div>
+                        )}
                     </AnimatePresence>
                 </div>
             </div>
