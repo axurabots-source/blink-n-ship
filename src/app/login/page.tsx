@@ -4,9 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Truck, Eye, EyeOff, MailCheck, Mail, RefreshCw, ArrowLeft } from 'lucide-react';
+import { Truck, Eye, EyeOff, MailCheck, Mail, RefreshCw, ArrowLeft, KeyRound } from 'lucide-react';
 
-// ─── Animated Canvas Background ───────────────────────────────────────────────
 function AnimatedBG() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -196,19 +195,16 @@ function AnimatedBG() {
     );
 }
 
-// ─── Left Panel ────────────────────────────────────────────────────────────────
 function LeftPanel({ isSignup }: { isSignup: boolean }) {
     return (
         <div className="login-left-panel">
             <AnimatedBG />
 
-            {/* Vignette */}
             <div style={{
                 position: 'absolute', inset: 0, pointerEvents: 'none',
                 background: 'radial-gradient(ellipse at 50% 100%, transparent 30%, rgba(10,10,10,0.6) 100%)',
             }} />
 
-            {/* Brand */}
             <div style={{ position: 'relative', zIndex: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Truck size={18} color="#CC785C" style={{ transform: 'scaleX(-1)' }} />
@@ -220,7 +216,6 @@ function LeftPanel({ isSignup }: { isSignup: boolean }) {
 
             <div />
 
-            {/* Bottom tagline */}
             <div style={{ position: 'relative', zIndex: 10 }}>
                 <AnimatePresence mode="wait">
                     <motion.div
@@ -257,7 +252,6 @@ function LeftPanel({ isSignup }: { isSignup: boolean }) {
     );
 }
 
-// ─── Mobile Top Banner ─────────────────────────────────────────────────────────
 function MobileBanner({ isSignup }: { isSignup: boolean }) {
     return (
         <div className="login-mobile-banner">
@@ -303,7 +297,6 @@ function MobileBanner({ isSignup }: { isSignup: boolean }) {
     );
 }
 
-// ─── Spinner ──────────────────────────────────────────────────────────────────
 function Spinner() {
     return (
         <motion.div
@@ -314,7 +307,6 @@ function Spinner() {
     );
 }
 
-// ─── Input Field ──────────────────────────────────────────────────────────────
 function InputField({ type, placeholder, value, onChange, required, minLength, inputMode, autoComplete }: {
     type: string; placeholder: string; value: string;
     onChange: (v: string) => void; required?: boolean; minLength?: number; inputMode?: string; autoComplete?: string;
@@ -335,7 +327,7 @@ function InputField({ type, placeholder, value, onChange, required, minLength, i
             style={{
                 width: '100%',
                 padding: '0.875rem 1rem',
-                fontSize: '16px', // Must be ≥16px to prevent iOS/Safari auto-zoom on focus
+                fontSize: '16px',
                 borderRadius: '0.75rem',
                 border: `1.5px solid ${focused ? '#CC785C' : '#e5e5e5'}`,
                 background: focused ? '#fffcfb' : '#fafafa',
@@ -349,7 +341,6 @@ function InputField({ type, placeholder, value, onChange, required, minLength, i
     );
 }
 
-// ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function LoginPage() {
     const [isSignup, setIsSignup] = useState(false);
     const [email, setEmail] = useState('');
@@ -359,22 +350,30 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const [showVerifyMessage, setShowVerifyMessage] = useState(false);
-    const [verifyEmail, setVerifyEmail] = useState('');
+    const [showOtpScreen, setShowOtpScreen] = useState(false);
+    const [otpEmail, setOtpEmail] = useState('');
+    const [otp, setOtp] = useState('');
+    const [otpLoading, setOtpLoading] = useState(false);
+    const [otpVerified, setOtpVerified] = useState(false);
+    const [otpPurpose, setOtpPurpose] = useState<'signup' | 'recovery'>('signup');
     const [resending, setResending] = useState(false);
     const [showVerifiedMessage, setShowVerifiedMessage] = useState(false);
     const [showVerifyRequiredMessage, setShowVerifyRequiredMessage] = useState(false);
     const [showForgotPassword, setShowForgotPassword] = useState(false);
-    const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
     const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+    const [forgotNewPassword, setForgotNewPassword] = useState('');
+    const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
+    const [forgotStep, setForgotStep] = useState<'email' | 'otp' | 'password'>('email');
     const router = useRouter();
     const supabase = createClient();
 
     useEffect(() => {
         setError(''); setEmail(''); setPassword(''); setBusinessName(''); setPhone('');
-        setShowVerifyMessage(false); setVerifyEmail('');
+        setShowOtpScreen(false); setOtp(''); setOtpVerified(false);
         setShowVerifiedMessage(false); setShowVerifyRequiredMessage(false);
-        setShowForgotPassword(false); setForgotPasswordSent(false); setForgotPasswordEmail('');
+        setShowForgotPassword(false); setForgotPasswordEmail('');
+        setForgotNewPassword(''); setShowForgotNewPassword(false);
+        setForgotStep('email');
     }, [isSignup]);
 
     useEffect(() => {
@@ -390,7 +389,7 @@ export default function LoginPage() {
         e.preventDefault();
         setError('');
         setLoading(true);
-        setShowVerifyMessage(false);
+        setShowOtpScreen(false);
 
         if (isSignup && (!businessName.trim() || !phone.trim())) {
             setError('Please enter your business name and phone number.');
@@ -399,7 +398,7 @@ export default function LoginPage() {
         }
 
         if (isSignup) {
-            const { data, error: authError } = await supabase.auth.signUp({
+            const { error: authError } = await supabase.auth.signUp({
                 email,
                 password,
                 options: {
@@ -408,19 +407,23 @@ export default function LoginPage() {
             });
             if (authError) { setError(authError.message); setLoading(false); return; }
             setLoading(false);
-
-            setVerifyEmail(email);
-            setShowVerifyMessage(true);
-            return;
+            setOtpEmail(email);
+            setOtpPurpose('signup');
+            setOtp('');
+            setOtpVerified(false);
+            setShowOtpScreen(true);
         } else {
             const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
             if (signInError) { setError(signInError.message); setLoading(false); return; }
             setLoading(false);
 
             if (!signInData.user?.email_confirmed_at) {
-                setVerifyEmail(email);
-                setShowVerifyMessage(true);
-                setError('Please verify your email before signing in. Check your inbox.');
+                setOtpEmail(email);
+                setOtpPurpose('signup');
+                setOtp('');
+                setOtpVerified(false);
+                setShowOtpScreen(true);
+                setError('Please verify your email before signing in.');
                 return;
             }
 
@@ -431,7 +434,57 @@ export default function LoginPage() {
         }
     }
 
-    async function handleForgotPassword(e: React.FormEvent) {
+    async function handleVerifyOtp(e: React.FormEvent) {
+        e.preventDefault();
+        setError('');
+        setOtpLoading(true);
+
+        const { error: verifyError } = await supabase.auth.verifyOtp({
+            email: otpEmail,
+            token: otp.trim(),
+            type: otpPurpose,
+        });
+
+        if (verifyError) {
+            setError(verifyError.message || 'Invalid code. Please try again.');
+            setOtpLoading(false);
+            return;
+        }
+
+        setOtpLoading(false);
+        setOtpVerified(true);
+
+        if (otpPurpose === 'signup') {
+            localStorage.removeItem('bns_account_type');
+            const params = new URLSearchParams();
+            if (businessName.trim()) params.set('businessName', businessName.trim());
+            if (phone.trim()) params.set('phone', phone.trim());
+            router.push('/account-type?' + params.toString());
+        }
+    }
+
+    async function handleResendOtp() {
+        setResending(true);
+        setError('');
+        if (otpPurpose === 'signup') {
+            const { error: resendError } = await supabase.auth.resend({
+                type: 'signup',
+                email: otpEmail,
+            });
+            setResending(false);
+            if (resendError) setError(resendError.message);
+            else setError('Code resent. Please check your inbox.');
+        } else {
+            const { error: resetError } = await supabase.auth.resetPasswordForEmail(otpEmail.trim(), {
+                redirectTo: `${window.location.origin}/reset-password`,
+            });
+            setResending(false);
+            if (resetError) setError(resetError.message);
+            else setError('Code resent. Please check your inbox.');
+        }
+    }
+
+    async function handleForgotPasswordSend(e: React.FormEvent) {
         e.preventDefault();
         setError('');
         setLoading(true);
@@ -442,25 +495,56 @@ export default function LoginPage() {
         if (resetError) {
             setError(resetError.message);
         } else {
-            setForgotPasswordSent(true);
-            setError('');
+            setForgotStep('otp');
+            setOtpEmail(forgotPasswordEmail);
+            setOtpPurpose('recovery');
+            setOtp('');
         }
     }
 
-    async function handleResendVerification() {
-        if (!verifyEmail) return;
-        setResending(true);
+    async function handleForgotVerifyOtp(e: React.FormEvent) {
+        e.preventDefault();
         setError('');
-        const { error: resendError } = await supabase.auth.resend({
-            type: 'signup',
-            email: verifyEmail,
+        setOtpLoading(true);
+
+        const { error: verifyError } = await supabase.auth.verifyOtp({
+            email: otpEmail,
+            token: otp.trim(),
+            type: 'recovery',
         });
-        setResending(false);
-        if (resendError) {
-            setError(resendError.message);
-        } else {
-            setError('Verification email resent. Please check your inbox.');
+
+        if (verifyError) {
+            setError(verifyError.message || 'Invalid code. Please try again.');
+            setOtpLoading(false);
+            return;
         }
+
+        setOtpLoading(false);
+        setForgotStep('password');
+        setOtp('');
+    }
+
+    async function handleForgotSetPassword(e: React.FormEvent) {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        if (forgotNewPassword.length < 6) {
+            setError('Password must be at least 6 characters.');
+            setLoading(false);
+            return;
+        }
+        const { error: updateError } = await supabase.auth.updateUser({ password: forgotNewPassword });
+        if (updateError) {
+            setError(updateError.message);
+            setLoading(false);
+            return;
+        }
+        setLoading(false);
+        setShowForgotPassword(false);
+        setForgotStep('email');
+        setForgotPasswordEmail('');
+        setForgotNewPassword('');
+        setShowVerifiedMessage(true);
     }
 
     return (
@@ -473,7 +557,6 @@ export default function LoginPage() {
                     font-family: var(--font-geist-sans), sans-serif;
                 }
 
-                /* Desktop: left panel visible, mobile banner hidden */
                 .login-left-panel {
                     width: 50%;
                     background: #0a0a0a;
@@ -520,18 +603,14 @@ export default function LoginPage() {
             `}</style>
 
             <div className="login-wrapper">
-                {/* Desktop left panel */}
                 <LeftPanel isSignup={isSignup} />
-
-                {/* Mobile top banner */}
                 <MobileBanner isSignup={isSignup} />
 
-                {/* Right / Bottom panel — form */}
                 <div className="login-right-panel">
                     <AnimatePresence mode="wait">
-                        {showVerifyMessage ? (
+                        {showOtpScreen ? (
                             <motion.div
-                                key="verify"
+                                key="otp"
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -20 }}
@@ -543,69 +622,118 @@ export default function LoginPage() {
                                     background: '#fff5f0', display: 'flex', alignItems: 'center',
                                     justifyContent: 'center', margin: '0 auto 20px',
                                 }}>
-                                    <MailCheck size={28} color="#CC785C" />
+                                    <KeyRound size={28} color="#CC785C" />
                                 </div>
 
                                 <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.03em', marginBottom: 8 }}>
-                                    Verify your email
+                                    {otpPurpose === 'signup' ? 'Verify your email' : 'Reset Password'}
                                 </h1>
-                                <p style={{ fontSize: '0.85rem', color: '#737373', marginBottom: 8, lineHeight: 1.6 }}>
-                                    We sent a verification email to <strong style={{ color: '#0a0a0a' }}>{verifyEmail}</strong>.
-                                    Please check your inbox and click the link to activate your account.
+                                <p style={{ fontSize: '0.85rem', color: '#737373', marginBottom: 4, lineHeight: 1.6 }}>
+                                    Enter the 6-digit code sent to <strong style={{ color: '#0a0a0a' }}>{otpEmail}</strong>.
                                 </p>
-                                <p style={{ fontSize: '0.8rem', color: '#a3a3a3', marginBottom: 28 }}>
-                                    Didn't receive it? Check your spam folder or resend below.
+                                <p style={{ fontSize: '0.8rem', color: '#a3a3a3', marginBottom: 24 }}>
+                                    Didn't receive it? Check your spam folder or resend.
                                 </p>
 
-                                <AnimatePresence>
-                                    {error && (
-                                        <motion.div
-                                            initial={{ opacity: 0, height: 0 }}
-                                            animate={{ opacity: 1, height: 'auto' }}
-                                            exit={{ opacity: 0, height: 0 }}
-                                            transition={{ duration: 0.22 }}
-                                            style={{ overflow: 'hidden', marginBottom: 16 }}
-                                        >
-                                            <div style={{ padding: '0.75rem', background: error.includes('resent') ? '#f0fdf4' : '#fff5f5', border: `1px solid ${error.includes('resent') ? '#bbf7d0' : '#fecaca'}`, borderRadius: '0.75rem' }}>
-                                                <span style={{ fontSize: '0.8rem', color: error.includes('resent') ? '#16a34a' : '#e05252' }}>
-                                                    {error.includes('resent') ? '✓ ' : '⚠ '}{error}
-                                                </span>
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
+                                <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        placeholder="Enter 6-digit code"
+                                        value={otp}
+                                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                        required
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.875rem 1rem',
+                                            fontSize: '16px',
+                                            borderRadius: '0.75rem',
+                                            border: '1.5px solid #e5e5e5',
+                                            background: '#fafafa',
+                                            color: '#0a0a0a',
+                                            outline: 'none',
+                                            textAlign: 'center',
+                                            letterSpacing: '0.25em',
+                                            fontWeight: 600,
+                                            boxSizing: 'border-box',
+                                        }}
+                                        onFocus={(e) => { e.target.style.borderColor = '#CC785C'; e.target.style.background = '#fffcfb'; e.target.style.boxShadow = '0 0 0 3px rgba(204,120,92,0.12)'; }}
+                                        onBlur={(e) => { e.target.style.borderColor = '#e5e5e5'; e.target.style.background = '#fafafa'; e.target.style.boxShadow = 'none'; }}
+                                    />
+
+                                    <AnimatePresence>
+                                        {error && (
+                                            <motion.div
+                                                initial={{ opacity: 0, height: 0 }}
+                                                animate={{ opacity: 1, height: 'auto' }}
+                                                exit={{ opacity: 0, height: 0 }}
+                                                transition={{ duration: 0.22 }}
+                                                style={{ overflow: 'hidden' }}
+                                            >
+                                                <div style={{ padding: '0.75rem', background: error.includes('resent') ? '#f0fdf4' : '#fff5f5', border: `1px solid ${error.includes('resent') ? '#bbf7d0' : '#fecaca'}`, borderRadius: '0.75rem' }}>
+                                                    <span style={{ fontSize: '0.8rem', color: error.includes('resent') ? '#16a34a' : '#e05252' }}>
+                                                        {error.includes('resent') ? '✓ ' : '⚠ '}{error}
+                                                    </span>
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+
+                                    <motion.button
+                                        type="submit"
+                                        disabled={otpLoading || otp.length < 6}
+                                        whileHover={{ scale: 1.015 }}
+                                        whileTap={{ scale: 0.975 }}
+                                        style={{
+                                            marginTop: 6,
+                                            width: '100%',
+                                            padding: '0.9rem',
+                                            borderRadius: '0.75rem',
+                                            background: '#CC785C',
+                                            color: '#ffffff',
+                                            fontSize: '0.875rem',
+                                            fontWeight: 600,
+                                            border: 'none',
+                                            cursor: otpLoading || otp.length < 6 ? 'not-allowed' : 'pointer',
+                                            opacity: otpLoading || otp.length < 6 ? 0.8 : 1,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: 8,
+                                        }}
+                                    >
+                                        {otpLoading && <Spinner />}
+                                        {otpLoading ? 'Verifying...' : 'Verify Code'}
+                                    </motion.button>
+                                </form>
 
                                 <motion.button
-                                    onClick={handleResendVerification}
+                                    onClick={handleResendOtp}
                                     disabled={resending}
-                                    whileHover={{ scale: 1.015 }}
-                                    whileTap={{ scale: 0.975 }}
+                                    whileHover={{ scale: 1.01 }}
                                     style={{
-                                        width: '100%',
-                                        padding: '0.9rem',
-                                        borderRadius: '0.75rem',
-                                        background: '#CC785C',
-                                        color: '#ffffff',
-                                        fontSize: '0.875rem',
-                                        fontWeight: 600,
+                                        marginTop: 16,
+                                        background: 'none',
                                         border: 'none',
                                         cursor: resending ? 'not-allowed' : 'pointer',
-                                        opacity: resending ? 0.8 : 1,
-                                        display: 'flex',
+                                        fontSize: '0.8rem',
+                                        color: '#CC785C',
+                                        fontWeight: 500,
+                                        display: 'inline-flex',
                                         alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: 8,
-                                        marginBottom: 12,
+                                        gap: 6,
+                                        opacity: resending ? 0.6 : 1,
                                     }}
                                 >
-                                    {resending ? <Spinner /> : <RefreshCw size={16} />}
-                                    {resending ? 'Resending...' : 'Resend Verification Email'}
+                                    <RefreshCw size={14} className={resending ? '' : ''} />
+                                    {resending ? 'Resending...' : 'Resend Code'}
                                 </motion.button>
 
                                 <motion.button
-                                    onClick={() => { setShowVerifyMessage(false); setError(''); }}
+                                    onClick={() => { setShowOtpScreen(false); setError(''); setOtp(''); }}
                                     whileHover={{ borderColor: '#CC785C', color: '#CC785C' }}
                                     style={{
+                                        marginTop: 12,
                                         width: '100%',
                                         padding: '0.75rem',
                                         borderRadius: '0.75rem',
@@ -618,11 +746,6 @@ export default function LoginPage() {
                                 >
                                     Back to sign in
                                 </motion.button>
-
-                                <p style={{ fontSize: '0.75rem', color: '#a3a3a3', marginTop: 24 }}>
-                                    <Mail size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                                    Make sure to check your spam/promotions folder
-                                </p>
                             </motion.div>
                         ) : showForgotPassword ? (
                             <motion.div
@@ -634,7 +757,7 @@ export default function LoginPage() {
                                 style={{ width: '100%', maxWidth: 380 }}
                             >
                                 <button
-                                    onClick={() => { setShowForgotPassword(false); setForgotPasswordSent(false); setError(''); }}
+                                    onClick={() => { setShowForgotPassword(false); setForgotStep('email'); setError(''); setForgotNewPassword(''); }}
                                     style={{
                                         background: 'none', border: 'none', cursor: 'pointer',
                                         display: 'flex', alignItems: 'center', gap: 6,
@@ -646,21 +769,188 @@ export default function LoginPage() {
                                     Back to sign in
                                 </button>
 
-                                {!forgotPasswordSent ? (
+                                {forgotStep === 'email' && (
                                     <>
                                         <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.03em', marginBottom: 8 }}>
                                             Reset Password
                                         </h1>
                                         <p style={{ fontSize: '0.85rem', color: '#737373', marginBottom: 28, lineHeight: 1.6 }}>
-                                            Enter your email address and we'll send you a link to reset your password.
+                                            Enter your email and we'll send you a 6-digit code to reset your password.
                                         </p>
 
-                                        <form onSubmit={handleForgotPassword} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                        <form onSubmit={handleForgotPasswordSend} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                                             <InputField
                                                 type="email" placeholder="Email address"
                                                 inputMode="email" autoComplete="email"
                                                 value={forgotPasswordEmail} onChange={setForgotPasswordEmail} required
                                             />
+                                            {error && (
+                                                <p style={{ fontSize: '0.8rem', color: '#e05252', margin: 0 }}>{error}</p>
+                                            )}
+                                            <motion.button
+                                                type="submit"
+                                                disabled={loading}
+                                                whileHover={{ scale: 1.015 }}
+                                                whileTap={{ scale: 0.975 }}
+                                                style={{
+                                                    marginTop: 6,
+                                                    width: '100%',
+                                                    padding: '0.9rem',
+                                                    borderRadius: '0.75rem',
+                                                    background: '#CC785C',
+                                                    color: '#ffffff',
+                                                    fontSize: '0.875rem',
+                                                    fontWeight: 600,
+                                                    border: 'none',
+                                                    cursor: loading ? 'not-allowed' : 'pointer',
+                                                    opacity: loading ? 0.8 : 1,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    gap: 8,
+                                                }}
+                                            >
+                                                {loading && <Spinner />}
+                                                {loading ? 'Sending...' : 'Send Reset Code'}
+                                            </motion.button>
+                                        </form>
+                                    </>
+                                )}
+
+                                {forgotStep === 'otp' && (
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div style={{
+                                            width: 56, height: 56, borderRadius: '50%',
+                                            background: '#fff5f0', display: 'flex', alignItems: 'center',
+                                            justifyContent: 'center', margin: '0 auto 20px',
+                                        }}>
+                                            <KeyRound size={28} color="#CC785C" />
+                                        </div>
+                                        <h1 style={{ fontSize: '1.3rem', fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.03em', marginBottom: 8 }}>
+                                            Check your email
+                                        </h1>
+                                        <p style={{ fontSize: '0.85rem', color: '#737373', marginBottom: 24, lineHeight: 1.6 }}>
+                                            We sent a 6-digit code to <strong style={{ color: '#0a0a0a' }}>{forgotPasswordEmail}</strong>.
+                                        </p>
+
+                                        <form onSubmit={handleForgotVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                            <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                placeholder="Enter 6-digit code"
+                                                value={otp}
+                                                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                required
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '0.875rem 1rem',
+                                                    fontSize: '16px',
+                                                    borderRadius: '0.75rem',
+                                                    border: '1.5px solid #e5e5e5',
+                                                    background: '#fafafa',
+                                                    color: '#0a0a0a',
+                                                    outline: 'none',
+                                                    textAlign: 'center',
+                                                    letterSpacing: '0.25em',
+                                                    fontWeight: 600,
+                                                    boxSizing: 'border-box',
+                                                }}
+                                                onFocus={(e) => { e.target.style.borderColor = '#CC785C'; e.target.style.background = '#fffcfb'; e.target.style.boxShadow = '0 0 0 3px rgba(204,120,92,0.12)'; }}
+                                                onBlur={(e) => { e.target.style.borderColor = '#e5e5e5'; e.target.style.background = '#fafafa'; e.target.style.boxShadow = 'none'; }}
+                                            />
+
+                                            {error && (
+                                                <p style={{ fontSize: '0.8rem', color: '#e05252', margin: 0 }}>{error}</p>
+                                            )}
+
+                                            <motion.button
+                                                type="submit"
+                                                disabled={otpLoading || otp.length < 6}
+                                                whileHover={{ scale: 1.015 }}
+                                                whileTap={{ scale: 0.975 }}
+                                                style={{
+                                                    marginTop: 6,
+                                                    width: '100%',
+                                                    padding: '0.9rem',
+                                                    borderRadius: '0.75rem',
+                                                    background: '#CC785C',
+                                                    color: '#ffffff',
+                                                    fontSize: '0.875rem',
+                                                    fontWeight: 600,
+                                                    border: 'none',
+                                                    cursor: otpLoading || otp.length < 6 ? 'not-allowed' : 'pointer',
+                                                    opacity: otpLoading || otp.length < 6 ? 0.8 : 1,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    gap: 8,
+                                                }}
+                                            >
+                                                {otpLoading && <Spinner />}
+                                                {otpLoading ? 'Verifying...' : 'Verify Code'}
+                                            </motion.button>
+                                        </form>
+
+                                        <motion.button
+                                            onClick={handleResendOtp}
+                                            disabled={resending}
+                                            whileHover={{ scale: 1.01 }}
+                                            style={{
+                                                marginTop: 16,
+                                                background: 'none',
+                                                border: 'none',
+                                                cursor: resending ? 'not-allowed' : 'pointer',
+                                                fontSize: '0.8rem',
+                                                color: '#CC785C',
+                                                fontWeight: 500,
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: 6,
+                                            }}
+                                        >
+                                            <RefreshCw size={14} />
+                                            {resending ? 'Resending...' : 'Resend Code'}
+                                        </motion.button>
+                                    </div>
+                                )}
+
+                                {forgotStep === 'password' && (
+                                    <>
+                                        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.03em', marginBottom: 8 }}>
+                                            Set new password
+                                        </h1>
+                                        <p style={{ fontSize: '0.85rem', color: '#737373', marginBottom: 28, lineHeight: 1.6 }}>
+                                            Choose a new password for your account.
+                                        </p>
+
+                                        <form onSubmit={handleForgotSetPassword} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                            <div style={{ position: 'relative' }}>
+                                                <InputField
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    placeholder="New password (min. 6 characters)"
+                                                    inputMode="text"
+                                                    autoComplete="new-password"
+                                                    value={forgotNewPassword} onChange={setForgotNewPassword} required minLength={6}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                    style={{
+                                                        position: 'absolute',
+                                                        right: 12,
+                                                        top: '50%',
+                                                        transform: 'translateY(-50%)',
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        padding: 0,
+                                                        display: 'flex',
+                                                        color: '#a3a3a3',
+                                                    }}
+                                                >
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
 
                                             {error && (
                                                 <p style={{ fontSize: '0.8rem', color: '#e05252', margin: 0 }}>{error}</p>
@@ -690,26 +980,10 @@ export default function LoginPage() {
                                                 }}
                                             >
                                                 {loading && <Spinner />}
-                                                {loading ? 'Sending...' : 'Send Reset Link'}
+                                                {loading ? 'Updating...' : 'Reset Password'}
                                             </motion.button>
                                         </form>
                                     </>
-                                ) : (
-                                    <div style={{ textAlign: 'center' }}>
-                                        <div style={{
-                                            width: 56, height: 56, borderRadius: '50%',
-                                            background: '#fff5f0', display: 'flex', alignItems: 'center',
-                                            justifyContent: 'center', margin: '0 auto 20px',
-                                        }}>
-                                            <MailCheck size={28} color="#CC785C" />
-                                        </div>
-                                        <h1 style={{ fontSize: '1.3rem', fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.03em', marginBottom: 8 }}>
-                                            Check your email
-                                        </h1>
-                                        <p style={{ fontSize: '0.85rem', color: '#737373', lineHeight: 1.6, marginBottom: 0 }}>
-                                            We sent a password reset link to <strong style={{ color: '#0a0a0a' }}>{forgotPasswordEmail}</strong>.
-                                        </p>
-                                    </div>
                                 )}
                             </motion.div>
                         ) : (
@@ -790,7 +1064,6 @@ export default function LoginPage() {
                                     </button>
                                 </div>
 
-                                {/* Forgot password — login mode only */}
                                 {!isSignup && (
                                     <div style={{ textAlign: 'right', marginTop: -4 }}>
                                         <button
@@ -814,7 +1087,7 @@ export default function LoginPage() {
                                 )}
 
                                 <AnimatePresence>
-                                    {error && !showVerifyMessage && (
+                                    {error && !showOtpScreen && (
                                         <motion.div
                                             initial={{ opacity: 0, height: 0 }}
                                             animate={{ opacity: 1, height: 'auto' }}
