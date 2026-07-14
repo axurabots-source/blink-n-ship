@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify your email - Blink N Ship</title>
+</head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:40px 16px">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="100%" style="max-width:480px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.04)">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background:#0a0a0a;padding:36px 32px 28px;text-align:center">
+                            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto">
+                                <tr>
+                                    <td style="vertical-align:middle;padding-right:8px">
+                                        <span style="font-size:20px;color:#CC785C;font-weight:700;display:inline-block">&#x1F69A;</span>
+                                    </td>
+                                    <td style="vertical-align:middle">
+                                        <span style="color:#ffffff;font-size:18px;font-weight:700;letter-spacing:-0.02em">Blink N Ship</span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Body -->
+                    <tr>
+                        <td style="padding:36px 32px 32px">
+                            <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#0a0a0a;letter-spacing:-0.03em">
+                                Verify your email
+                            </h1>
+                            <p style="margin:0 0 24px;font-size:14px;color:#737373;line-height:1.6">
+                                Welcome to Blink N Ship! Use the 6-digit code below to activate your account:
+                            </p>
+
+                            <!-- OTP Code -->
+                            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 28px">
+                                <tr>
+                                    <td style="background:#fff5f0;border-radius:12px;padding:16px 36px;letter-spacing:8px;font-size:32px;font-weight:700;color:#0a0a0a;text-align:center;font-family:monospace">
+                                        {{ .Token }}
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="margin:0 0 20px;font-size:13px;color:#737373;line-height:1.6">
+                                Or click the button below to verify instantly:
+                            </p>
+
+                            <!-- CTA Button -->
+                            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 28px">
+                                <tr>
+                                    <td align="center" style="background:#CC785C;border-radius:10px;padding:14px 36px">
+                                        <a href="{{ .ConfirmationURL }}" target="_blank" style="color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;display:inline-block">
+                                            Verify Email →
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="margin:0 0 16px;font-size:12px;color:#a3a3a3;line-height:1.5">
+                                This code expires in 1 hour. If you didn't create an account with Blink N Ship, you can safely ignore this email.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="border-top:1px solid #e5e5e5;padding:20px 32px;text-align:center">
+                            <p style="margin:0;font-size:12px;color:#a3a3a3">
+                                &copy; 2026 Blink N Ship &bull;
+                                <a href="https://app.blinknship.com" style="color:#CC785C;text-decoration:underline">app.blinknship.com</a>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
