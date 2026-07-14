@@ -16,13 +16,13 @@ import {
     X,
     ChevronDown,
     Settings,
-    FileText,
     MapPin,
     Globe,
     DollarSign,
     Package,
     Eye,
 } from 'lucide-react';
+import Image from 'next/image';
 
 function useMainLinks(accountType: string | null) {
     const links = [
@@ -117,17 +117,11 @@ export default function AppSidebar() {
             <div style={{ padding: '24px 20px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <motion.div
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
-                        whileHover="hover"
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+                        whileHover={{ scale: 1.02 }}
                         onClick={() => router.push('/dashboard')}
                     >
-                        <motion.div
-                            variants={{
-                                hover: { x: [0, 6, -2, 0], transition: { duration: 0.6, ease: 'easeInOut' } }
-                            }}
-                        >
-                            <Truck size={18} color="#CC785C" style={{ transform: 'scaleX(-1)' }} aria-hidden="true" />
-                        </motion.div>
+                        <Image src="/logo.png" alt="Blink N Ship" width={28} height={28} style={{ borderRadius: 4, flexShrink: 0 }} />
                         <h1 style={{
                             color: '#ffffff',
                             fontWeight: 700,
@@ -141,7 +135,7 @@ export default function AppSidebar() {
                     <button
                         onClick={() => setMobileOpen(false)}
                         aria-label="Close navigation menu"
-                        style={{ background: 'none', border: 'none', color: '#a3a3a3', cursor: 'pointer', display: 'none' }}
+                        style={{ background: 'none', border: 'none', color: '#a3a3a3', cursor: 'pointer', padding: 0, display: 'none' }}
                         className="mobile-close-btn"
                     >
                         <X size={18} aria-hidden="true" />

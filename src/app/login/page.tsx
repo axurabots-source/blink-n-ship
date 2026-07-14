@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Truck, Eye, EyeOff, MailCheck, Mail, RefreshCw, ArrowLeft, KeyRound } from 'lucide-react';
+import { Eye, EyeOff, MailCheck, Mail, RefreshCw, ArrowLeft, KeyRound } from 'lucide-react';
+import Image from 'next/image';
 
 function AnimatedBG() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -206,8 +207,8 @@ function LeftPanel({ isSignup }: { isSignup: boolean }) {
             }} />
 
             <div style={{ position: 'relative', zIndex: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Truck size={18} color="#CC785C" style={{ transform: 'scaleX(-1)' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Image src="/logo.png" alt="Blink N Ship" width={26} height={26} style={{ borderRadius: 4, flexShrink: 0 }} />
                     <span style={{ color: '#ffffff', fontWeight: 700, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>
                         Blink N Ship
                     </span>
@@ -261,8 +262,8 @@ function MobileBanner({ isSignup }: { isSignup: boolean }) {
                 background: 'radial-gradient(ellipse at 50% 120%, transparent 30%, rgba(10,10,10,0.7) 100%)',
             }} />
             <div style={{ position: 'relative', zIndex: 10, padding: '28px 28px 24px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                    <Truck size={16} color="#CC785C" style={{ transform: 'scaleX(-1)' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <Image src="/logo.png" alt="Blink N Ship" width={22} height={22} style={{ borderRadius: 3, flexShrink: 0 }} />
                     <span style={{ color: '#ffffff', fontWeight: 700, fontSize: '1.05rem', letterSpacing: '-0.02em' }}>
                         Blink N Ship
                     </span>
