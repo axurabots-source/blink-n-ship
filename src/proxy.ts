@@ -39,7 +39,7 @@ const API_PREFIX = '/api/';
 const MAX_BODY_SIZE = 100_000;
 
 // Routes that never require an authenticated session
-const PUBLIC_ROUTES = ['/login', '/verify', '/forgot-password', '/reset-password', '/auth/callback'];
+const PUBLIC_ROUTES = ['/login', '/verify', '/reset-password', '/auth/callback'];
 
 function isPageRequest(req: NextRequest): boolean {
   const accept = req.headers.get('accept') || '';

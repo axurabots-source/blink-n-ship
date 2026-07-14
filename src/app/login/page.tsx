@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Truck, Eye, EyeOff, MailCheck, Mail, RefreshCw } from 'lucide-react';
+import { Truck, Eye, EyeOff, MailCheck, Mail, RefreshCw, ArrowLeft } from 'lucide-react';
 
 // ─── Animated Canvas Background ───────────────────────────────────────────────
 function AnimatedBG() {
@@ -364,6 +364,9 @@ export default function LoginPage() {
     const [resending, setResending] = useState(false);
     const [showVerifiedMessage, setShowVerifiedMessage] = useState(false);
     const [showVerifyRequiredMessage, setShowVerifyRequiredMessage] = useState(false);
+    const [showForgotPassword, setShowForgotPassword] = useState(false);
+    const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
+    const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
     const router = useRouter();
     const supabase = createClient();
 
@@ -371,6 +374,7 @@ export default function LoginPage() {
         setError(''); setEmail(''); setPassword(''); setBusinessName(''); setPhone('');
         setShowVerifyMessage(false); setVerifyEmail('');
         setShowVerifiedMessage(false); setShowVerifyRequiredMessage(false);
+        setShowForgotPassword(false); setForgotPasswordSent(false); setForgotPasswordEmail('');
     }, [isSignup]);
 
     useEffect(() => {
@@ -424,6 +428,22 @@ export default function LoginPage() {
             const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
             router.push(isMobile ? '/courier/connect' : '/dashboard');
             router.refresh();
+        }
+    }
+
+    async function handleForgotPassword(e: React.FormEvent) {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(forgotPasswordEmail.trim(), {
+            redirectTo: `${window.location.origin}/reset-password`,
+        });
+        setLoading(false);
+        if (resetError) {
+            setError(resetError.message);
+        } else {
+            setForgotPasswordSent(true);
+            setError('');
         }
     }
 
@@ -604,6 +624,94 @@ export default function LoginPage() {
                                     Make sure to check your spam/promotions folder
                                 </p>
                             </motion.div>
+                        ) : showForgotPassword ? (
+                            <motion.div
+                                key="forgot"
+                                initial={{ opacity: 0, x: 40 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -40 }}
+                                transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                                style={{ width: '100%', maxWidth: 380 }}
+                            >
+                                <button
+                                    onClick={() => { setShowForgotPassword(false); setForgotPasswordSent(false); setError(''); }}
+                                    style={{
+                                        background: 'none', border: 'none', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        color: '#737373', fontSize: '0.8rem', padding: 0,
+                                        marginBottom: 24,
+                                    }}
+                                >
+                                    <ArrowLeft size={14} />
+                                    Back to sign in
+                                </button>
+
+                                {!forgotPasswordSent ? (
+                                    <>
+                                        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.03em', marginBottom: 8 }}>
+                                            Reset Password
+                                        </h1>
+                                        <p style={{ fontSize: '0.85rem', color: '#737373', marginBottom: 28, lineHeight: 1.6 }}>
+                                            Enter your email address and we'll send you a link to reset your password.
+                                        </p>
+
+                                        <form onSubmit={handleForgotPassword} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                            <InputField
+                                                type="email" placeholder="Email address"
+                                                inputMode="email" autoComplete="email"
+                                                value={forgotPasswordEmail} onChange={setForgotPasswordEmail} required
+                                            />
+
+                                            {error && (
+                                                <p style={{ fontSize: '0.8rem', color: '#e05252', margin: 0 }}>{error}</p>
+                                            )}
+
+                                            <motion.button
+                                                type="submit"
+                                                disabled={loading}
+                                                whileHover={{ scale: 1.015 }}
+                                                whileTap={{ scale: 0.975 }}
+                                                style={{
+                                                    marginTop: 6,
+                                                    width: '100%',
+                                                    padding: '0.9rem',
+                                                    borderRadius: '0.75rem',
+                                                    background: '#CC785C',
+                                                    color: '#ffffff',
+                                                    fontSize: '0.875rem',
+                                                    fontWeight: 600,
+                                                    border: 'none',
+                                                    cursor: loading ? 'not-allowed' : 'pointer',
+                                                    opacity: loading ? 0.8 : 1,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    gap: 8,
+                                                }}
+                                            >
+                                                {loading && <Spinner />}
+                                                {loading ? 'Sending...' : 'Send Reset Link'}
+                                            </motion.button>
+                                        </form>
+                                    </>
+                                ) : (
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div style={{
+                                            width: 56, height: 56, borderRadius: '50%',
+                                            background: '#fff5f0', display: 'flex', alignItems: 'center',
+                                            justifyContent: 'center', margin: '0 auto 20px',
+                                        }}>
+                                            <MailCheck size={28} color="#CC785C" />
+                                        </div>
+                                        <h1 style={{ fontSize: '1.3rem', fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.03em', marginBottom: 8 }}>
+                                            Check your email
+                                        </h1>
+                                        <p style={{ fontSize: '0.85rem', color: '#737373', lineHeight: 1.6, marginBottom: 0 }}>
+                                            We sent a password reset link to <strong style={{ color: '#0a0a0a' }}>{forgotPasswordEmail}</strong>.
+                                        </p>
+                                    </div>
+                                )}
+                            </motion.div>
                         ) : (
                         <motion.div
                             key={isSignup ? 'signup' : 'login'}
@@ -687,7 +795,7 @@ export default function LoginPage() {
                                     <div style={{ textAlign: 'right', marginTop: -4 }}>
                                         <button
                                             type="button"
-                                            onClick={() => router.push('/forgot-password')}
+                                            onClick={() => { setShowForgotPassword(true); setError(''); }}
                                             style={{
                                                 background: 'none',
                                                 border: 'none',
