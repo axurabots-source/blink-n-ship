@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Blink N Ship",
   description: "Order processing made simple",
-  icons: [{ rel: "icon", url: "/favicon.png" }],
+  icons: [{ rel: "icon", url: "/favicon.png", type: "image/png" }],
 };
 
 export const viewport: Viewport = {
