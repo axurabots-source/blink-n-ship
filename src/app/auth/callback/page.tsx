@@ -16,7 +16,7 @@ export default function AuthCallbackPage() {
                 router.push('/login');
                 return;
             }
-            router.push('/login?verified=1');
+            router.push('/account-type');
         }
         handleRedirect();
     }, [router, supabase]);
