@@ -405,17 +405,9 @@ export default function LoginPage() {
             if (authError) { setError(authError.message); setLoading(false); return; }
             setLoading(false);
 
-            if (!data.session) {
-                setVerifyEmail(email);
-                setShowVerifyMessage(true);
-                return;
-            }
-
-            localStorage.removeItem('bns_account_type');
-            const params = new URLSearchParams();
-            if (businessName.trim()) params.set('businessName', businessName.trim());
-            if (phone.trim()) params.set('phone', phone.trim());
-            router.push('/account-type?' + params.toString());
+            setVerifyEmail(email);
+            setShowVerifyMessage(true);
+            return;
         } else {
             const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
             if (signInError) { setError(signInError.message); setLoading(false); return; }
