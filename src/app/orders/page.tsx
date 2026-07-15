@@ -93,6 +93,7 @@ const isPhoneInvalid = (phone: string | null) => {
 
 export default function OrdersPage() {
   const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
   const [rawText, setRawText] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -107,6 +108,10 @@ export default function OrdersPage() {
   const [editBookedForm, setEditBookedForm] = useState<Partial<Order>>({});
 
   const [savingEdit, setSavingEdit] = useState(false);
+
+  const rawTextRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rawTextValue = useRef("");
+  const autoSaveRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const [extracting, setExtracting] = useState(false);
   const [booking, setBooking] = useState(false);
@@ -215,6 +220,10 @@ export default function OrdersPage() {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // Restore rawText from sessionStorage
+    const savedRaw = sessionStorage.getItem("bns_raw_text");
+    if (savedRaw) setRawText(savedRaw);
+
     // Hydrate state from memory cache instantly
     const cache = (window as any).__BNS_CACHE__;
     if (cache) {
@@ -238,11 +247,21 @@ export default function OrdersPage() {
         if (err.name !== "AbortError") {
           console.error("OrdersPage init error:", err);
         }
+      } finally {
+        setLoading(false);
       }
     }
     init();
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (rawTextValue.current) {
+        sessionStorage.setItem("bns_raw_text", rawTextValue.current);
+      }
+      // Flush all pending auto-saves
+      Object.values(autoSaveRef.current).forEach(clearTimeout);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-sum order items totals into main costPrice/saleAmount/profit/weight fields
@@ -430,6 +449,7 @@ export default function OrdersPage() {
         throw new Error(b.error || "Extraction failed");
       }
       setRawText("");
+      sessionStorage.removeItem("bns_raw_text");
       toast("success", "Orders extracted successfully");
       await refresh();
     } catch (err: any) {
@@ -528,6 +548,15 @@ export default function OrdersPage() {
 
   async function saveField(orderId: string, field: string, value: any) {
     saveFieldsBatch(orderId, { [field]: value });
+  }
+
+  function autoSaveField(orderId: string, field: string, value: any) {
+    const key = orderId + "_" + field;
+    if (autoSaveRef.current[key]) clearTimeout(autoSaveRef.current[key]);
+    autoSaveRef.current[key] = setTimeout(() => {
+      saveField(orderId, field, value);
+      delete autoSaveRef.current[key];
+    }, 1200);
   }
 
   function addOrderItem(
@@ -1488,6 +1517,50 @@ export default function OrdersPage() {
           </p>
         </div>
 
+        {loading && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                style={{
+                  background: T.card,
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 12,
+                  padding: 24,
+                }}
+              >
+                <div
+                  style={{
+                    height: 14,
+                    width: "40%",
+                    background: T.border,
+                    borderRadius: 6,
+                    marginBottom: 12,
+                  }}
+                />
+                <div
+                  style={{
+                    height: 10,
+                    width: "70%",
+                    background: T.border,
+                    borderRadius: 6,
+                    marginBottom: 8,
+                  }}
+                />
+                <div
+                  style={{
+                    height: 10,
+                    width: "50%",
+                    background: T.border,
+                    borderRadius: 6,
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        {!loading && (
+          <>
         {/* Error Banner */}
         {error && (
           <div
@@ -1532,7 +1605,14 @@ export default function OrdersPage() {
           </label>
           <textarea
             value={rawText}
-            onChange={(e) => setRawText(e.target.value)}
+            onChange={(e) => {
+              setRawText(e.target.value);
+              rawTextValue.current = e.target.value;
+              if (rawTextRef.current) clearTimeout(rawTextRef.current);
+              rawTextRef.current = setTimeout(() => {
+                sessionStorage.setItem("bns_raw_text", e.target.value);
+              }, 500);
+            }}
             placeholder="Paste message from customer here. E.g. Name: Aisha Khan, Cell: 03215556789, Address: House 23, Block C, Gulshan, Karachi. Item: 2 lawn suits"
             rows={4}
             style={{
@@ -2083,6 +2163,11 @@ export default function OrdersPage() {
                                         "customerName",
                                         e.target.value,
                                       );
+                                      autoSaveField(
+                                        order.id,
+                                        "customerName",
+                                        e.target.value,
+                                      );
                                     }}
                                     onBlur={(e) =>
                                       saveField(
@@ -2460,9 +2545,10 @@ export default function OrdersPage() {
                               type="number"
                               inputMode="numeric"
                               value={order.quantity || 1}
-                              onChange={(e) =>
-                                editLocal(order.id, "quantity", e.target.value)
-                              }
+                              onChange={(e) => {
+                                editLocal(order.id, "quantity", e.target.value);
+                                autoSaveField(order.id, "quantity", parseInt(e.target.value) || 1);
+                              }}
                               onBlur={(e) =>
                                 saveField(
                                   order.id,
@@ -2505,9 +2591,10 @@ export default function OrdersPage() {
                                 fieldRefs.current[`${order.id}-address`] = el;
                               }}
                               value={order.address || ""}
-                              onChange={(e) =>
-                                editLocal(order.id, "address", e.target.value)
-                              }
+                              onChange={(e) => {
+                                editLocal(order.id, "address", e.target.value);
+                                autoSaveField(order.id, "address", e.target.value);
+                              }}
                               onBlur={(e) =>
                                 saveField(order.id, "address", e.target.value)
                               }
@@ -2542,9 +2629,10 @@ export default function OrdersPage() {
                                 <input
                                   type="text"
                                   value={order.productInfo ?? ""}
-                                  onChange={(e) =>
-                                    editLocal(order.id, "productInfo", e.target.value)
-                                  }
+                                  onChange={(e) => {
+                                    editLocal(order.id, "productInfo", e.target.value);
+                                    autoSaveField(order.id, "productInfo", e.target.value);
+                                  }}
                                   onBlur={(e) =>
                                     saveField(order.id, "productInfo", e.target.value)
                                   }
@@ -3325,6 +3413,7 @@ export default function OrdersPage() {
                                   "sellingPrice",
                                   e.target.value,
                                 );
+                                autoSaveField(order.id, "sellingPrice", parseFloat(e.target.value) || 0);
                               }}
                               onBlur={(e) =>
                                 saveFieldsBatch(order.id, {
@@ -4603,6 +4692,8 @@ export default function OrdersPage() {
               )}
             </div>
           </div>
+        )}
+          </>
         )}
       </motion.div>
     </>
