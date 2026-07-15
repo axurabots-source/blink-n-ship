@@ -1,0 +1,824 @@
+{
+  "nodes": [
+    {
+      "id": "_flaship_api_docs_extracted_txt_flashipapi",
+      "label": "Flaship API",
+      "file_type": "document",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": "https://partners.flaship.pk",
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_authentication",
+      "label": "Authentication",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_xapikey",
+      "label": "X-API-KEY",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_couriersratescities",
+      "label": "Couriers, Rates & Cities",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_systemstatuses",
+      "label": "System Statuses",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_pickuplocations",
+      "label": "Pickup Locations",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_createpickuplocation",
+      "label": "Create Pickup Location",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_ratecard",
+      "label": "Rate Card",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_createbooking",
+      "label": "Create Booking",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_bulkbooking",
+      "label": "Bulk Booking",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_listorders",
+      "label": "List Orders",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_orderdetail",
+      "label": "Order Detail",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_trackorder",
+      "label": "Track Order",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_cancelorder",
+      "label": "Cancel Order",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_loadsheeteligibleorders",
+      "label": "Loadsheet Eligible Orders",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_generateloadsheet",
+      "label": "Generate Loadsheet",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_generatelabel",
+      "label": "Generate Label",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_tcs",
+      "label": "TCS",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_leopard",
+      "label": "Leopard",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_trax",
+      "label": "Trax",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_mnp",
+      "label": "MNP",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_ratelimiting",
+      "label": "Rate Limiting",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "agents_md_nextjsagentrules",
+      "label": "Next.js Agent Rules",
+      "file_type": "document",
+      "source_file": "D:\\blink-n-ship-mian\\AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "claude_md_claudeconfig",
+      "label": "Claude Config",
+      "file_type": "document",
+      "source_file": "D:\\blink-n-ship-mian\\CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_md_nextjs",
+      "label": "Next.js",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\README.md",
+      "source_location": null,
+      "source_url": "https://nextjs.org",
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_md_geistfont",
+      "label": "Geist Font",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\README.md",
+      "source_location": null,
+      "source_url": "https://vercel.com/font",
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_md_vercel",
+      "label": "Vercel",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\README.md",
+      "source_location": null,
+      "source_url": "https://vercel.com",
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_md_createnextapp",
+      "label": "create-next-app",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\README.md",
+      "source_location": null,
+      "source_url": "https://nextjs.org/docs/app/api-reference/cli/create-next-app",
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "render_yaml_blinknshipservice",
+      "label": "Blink-n-Ship Service",
+      "file_type": "code",
+      "source_file": "D:\\blink-n-ship-mian\\render.yaml",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "render_yaml_renderdeployment",
+      "label": "Render Deployment",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\render.yaml",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "render_yaml_environmentvariables",
+      "label": "Environment Variables",
+      "file_type": "concept",
+      "source_file": "D:\\blink-n-ship-mian\\render.yaml",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "_flaship_api_docs_extracted_txt_authentication_rationale",
+      "label": "API Key Security Rationale",
+      "file_type": "rationale",
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Keep API key secure and never expose it in client-side code or public repositories"
+    },
+    {
+      "id": "agents_md_breakingchanges",
+      "label": "Breaking Changes Warning",
+      "file_type": "rationale",
+      "source_file": "D:\\blink-n-ship-mian\\AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "This version of Next.js has breaking changes — APIs, conventions, and file structure may all differ from training data. Read the relevant guide in node_modules/next/dist/docs/ before writing any code."
+    },
+    {
+      "id": "favicon.png",
+      "label": "favicon.png (web application icon)",
+      "file_type": "image",
+      "source_file": "D:\\blink-n-ship-mian\\public\\favicon.png",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "blink-n-ship-mian-webapp",
+      "label": "Blink-n-Ship web application",
+      "file_type": "rationale",
+      "source_file": "D:\\blink-n-ship-mian\\public\\favicon.png",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "file:///D:/blink-n-ship-mian/public/logo.png",
+      "label": "Blink-n-Ship Application Logo",
+      "file_type": "image",
+      "source_file": "D:\\blink-n-ship-mian\\public\\logo.png",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_authentication",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_authentication",
+      "target": "_flaship_api_docs_extracted_txt_xapikey",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_couriersratescities",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_systemstatuses",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_pickuplocations",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_createpickuplocation",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_ratecard",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_createbooking",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_bulkbooking",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_listorders",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_orderdetail",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_trackorder",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_cancelorder",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_loadsheeteligibleorders",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_generateloadsheet",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_generatelabel",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_tcs",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_leopard",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_trax",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_mnp",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_flashipapi",
+      "target": "_flaship_api_docs_extracted_txt_ratelimiting",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_authentication_rationale",
+      "target": "_flaship_api_docs_extracted_txt_xapikey",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "claude_md_claudeconfig",
+      "target": "agents_md_nextjsagentrules",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_md_nextjs",
+      "target": "readme_md_createnextapp",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_md_nextjs",
+      "target": "readme_md_geistfont",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_md_nextjs",
+      "target": "readme_md_vercel",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "render_yaml_blinknshipservice",
+      "target": "render_yaml_renderdeployment",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\render.yaml",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "render_yaml_blinknshipservice",
+      "target": "render_yaml_environmentvariables",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\render.yaml",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "render_yaml_blinknshipservice",
+      "target": "readme_md_nextjs",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "D:\\blink-n-ship-mian\\render.yaml",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "agents_md_nextjsagentrules",
+      "target": "readme_md_nextjs",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_createbooking",
+      "target": "_flaship_api_docs_extracted_txt_generatelabel",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_generateloadsheet",
+      "target": "_flaship_api_docs_extracted_txt_loadsheeteligibleorders",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_createbooking",
+      "target": "_flaship_api_docs_extracted_txt_bulkbooking",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_trackorder",
+      "target": "_flaship_api_docs_extracted_txt_orderdetail",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_cancelorder",
+      "target": "_flaship_api_docs_extracted_txt_createbooking",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "_flaship_api_docs_extracted_txt_generateloadsheet",
+      "target": "_flaship_api_docs_extracted_txt_generatelabel",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_md_nextjs",
+      "target": "readme_md_vercel",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source_id": "favicon.png",
+      "target_id": "blink-n-ship-mian-webapp",
+      "relationship": "brand_icon_for",
+      "edge_type": "INFERRED",
+      "confidence_score": 0.85,
+      "notes": "favicon.png serves as the browser tab icon / branding asset for the web application"
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "flaship_api_endpoints",
+      "label": "Flaship API Endpoints",
+      "nodes": [
+        "_flaship_api_docs_extracted_txt_couriersratescities",
+        "_flaship_api_docs_extracted_txt_systemstatuses",
+        "_flaship_api_docs_extracted_txt_pickuplocations",
+        "_flaship_api_docs_extracted_txt_createpickuplocation",
+        "_flaship_api_docs_extracted_txt_ratecard",
+        "_flaship_api_docs_extracted_txt_createbooking",
+        "_flaship_api_docs_extracted_txt_bulkbooking",
+        "_flaship_api_docs_extracted_txt_listorders",
+        "_flaship_api_docs_extracted_txt_orderdetail",
+        "_flaship_api_docs_extracted_txt_trackorder",
+        "_flaship_api_docs_extracted_txt_cancelorder",
+        "_flaship_api_docs_extracted_txt_loadsheeteligibleorders",
+        "_flaship_api_docs_extracted_txt_generateloadsheet",
+        "_flaship_api_docs_extracted_txt_generatelabel"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt"
+    },
+    {
+      "id": "flaship_courier_companies",
+      "label": "Flaship Courier Companies",
+      "nodes": [
+        "_flaship_api_docs_extracted_txt_tcs",
+        "_flaship_api_docs_extracted_txt_leopard",
+        "_flaship_api_docs_extracted_txt_trax",
+        "_flaship_api_docs_extracted_txt_mnp"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\blink-n-ship-mian\\.flaship_api_docs.extracted.txt"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

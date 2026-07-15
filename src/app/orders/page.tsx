@@ -4,6 +4,11 @@ import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/components/Toast";
 import { normalizePakistaniPhone, normalizePakistaniPhoneOnBlur, isValidPakistaniPhone } from "@/lib/phone";
+import { useQueryClient } from "@tanstack/react-query";
+import { useOrders } from "@/lib/queries/useOrders";
+import { useProductsEnabled } from "@/lib/queries/useProducts";
+import { useCitiesEnabled } from "@/lib/queries/useCities";
+import { useCompaniesEnabled } from "@/lib/queries/useCompanies";
 import {
   Loader2,
   CheckSquare,
@@ -65,7 +70,7 @@ type Product = {
 
 type Profile = {
   id: string;
-  accountType: "inventory_holder" | "reseller";
+
   businessName: string | null;
 };
 
@@ -97,7 +102,7 @@ export default function OrdersPage() {
   const [rawText, setRawText] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [profile, setProfile] = useState<Profile | null>(null);
+
   const [selectedDrafts, setSelectedDrafts] = useState<Set<string>>(new Set());
   const [selectedBooked, setSelectedBooked] = useState<Set<string>>(new Set());
   const [expandedDrafts, setExpandedDrafts] = useState<Set<string>>(new Set());
@@ -214,58 +219,65 @@ export default function OrdersPage() {
     { id: string; name: string; code: string }[]
   >([]);
 
-  const abortRef = useRef<AbortController | null>(null);
+  // Shared queries — data is cached and shared across pages
+  const { data: ordersQuery, isLoading: ordersLoading } = useOrders();
+  const [productsReady, setProductsReady] = useState(false);
+  const [citiesReady, setCitiesReady] = useState(false);
+  const [companiesReady, setCompaniesReady] = useState(false);
+  const { data: productsData } = useProductsEnabled(productsReady);
+  const { data: citiesData } = useCitiesEnabled(citiesReady);
+  const { data: companiesData } = useCompaniesEnabled(companiesReady);
+
+  // Sync query data → local state (query serves as cache + background refresh)
+  useEffect(() => {
+    if (ordersQuery?.orders) {
+      setOrders(ordersQuery.orders);
+      hydrateItemsFromOrders(ordersQuery.orders);
+      setLoading(false);
+    }
+  }, [ordersQuery]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    abortRef.current = controller;
+    if (productsData) {
+      setProducts(productsData);
+      setProductsLoaded(true);
+    }
+  }, [productsData]);
 
-    // Restore rawText from sessionStorage
+  useEffect(() => {
+    if (citiesData) setDbCities(citiesData);
+  }, [citiesData]);
+
+  useEffect(() => {
+    if (companiesData) setCourierCompanies(companiesData);
+  }, [companiesData]);
+
+  useEffect(() => {
     const savedRaw = sessionStorage.getItem("bns_raw_text");
     if (savedRaw) setRawText(savedRaw);
 
-    // Hydrate state from memory cache instantly
-    const cache = (window as any).__BNS_CACHE__;
-    if (cache) {
-      if (cache.orders) {
-        setOrders(cache.orders);
-        hydrateItemsFromOrders(cache.orders);
-      }
-      if (cache.profile) setProfile(cache.profile);
-      if (cache.products) {
-        setProducts(cache.products);
-        setProductsLoaded(true);
-      }
-      if (cache.dbCities) setDbCities(cache.dbCities);
-      if (cache.courierCompanies) setCourierCompanies(cache.courierCompanies);
-    }
-
-    async function init() {
-      try {
-        await Promise.all([refresh(), loadProducts(), loadCourierMeta()]);
-      } catch (err: any) {
-        if (err.name !== "AbortError") {
-          console.error("OrdersPage init error:", err);
-        }
-      } finally {
-        setLoading(false);
-      }
-    }
-    init();
+    // Defer non-critical data to after first paint
+    const deferTimer = setTimeout(() => {
+      setProductsReady(true);
+      setCitiesReady(true);
+      setCompaniesReady(true);
+    }, 100);
 
     return () => {
-      controller.abort();
+      clearTimeout(deferTimer);
       if (rawTextValue.current) {
         sessionStorage.setItem("bns_raw_text", rawTextValue.current);
       }
-      // Flush all pending auto-saves
       Object.values(autoSaveRef.current).forEach(clearTimeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-sum order items totals into main costPrice/saleAmount/profit/weight fields
+  // and persist to DB so ledger/booking API reads correct values.
+  // Only persists for draft orders — booked orders keep their net profit from booking.
   useEffect(() => {
+    const persistQueue: { orderId: string; payload: Record<string, any> }[] = [];
     Object.keys(orderItemsMap).forEach((orderId) => {
       const items = orderItemsMap[orderId] || [];
       const totalCost = items.reduce(
@@ -289,74 +301,66 @@ export default function OrdersPage() {
       const hasSomeSale = items.some(i => i.saleAmount && Number(i.saleAmount) > 0);
       setOrders((prev) =>
         prev.map((o) => {
-          if (o.id === orderId) {
-            const profit = totalCost && totalSale
-              ? String(totalSale - totalCost)
-              : null;
-            return {
-              ...o,
-              costPrice: hasSomeCost ? String(totalCost) : o.costPrice,
-              saleAmount: hasSomeSale ? String(totalSale) : o.saleAmount,
-              profit,
-              weight: allInventory && totalWeight > 0 ? String(totalWeight) : o.weight,
-            };
+          if (o.id !== orderId) return o;
+          const profit = totalCost && totalSale
+            ? String(totalSale - totalCost)
+            : null;
+          const newCost = hasSomeCost ? String(totalCost) : o.costPrice;
+          const newSale = hasSomeSale ? String(totalSale) : o.saleAmount;
+          const newWeight = allInventory && totalWeight > 0 ? String(totalWeight) : o.weight;
+          const changed = newCost !== o.costPrice || newSale !== o.saleAmount || profit !== o.profit || newWeight !== o.weight;
+          if (changed && o.status === 'draft') {
+            const payload: Record<string, any> = {};
+            if (hasSomeCost) payload.costPrice = totalCost;
+            if (hasSomeSale) payload.saleAmount = totalSale;
+            if (allInventory && totalWeight > 0) payload.weight = totalWeight;
+            if (Object.keys(payload).length > 0) {
+              persistQueue.push({ orderId, payload });
+            }
           }
-          return o;
+          return { ...o, costPrice: newCost, saleAmount: newSale, profit, weight: newWeight };
         }),
       );
     });
+    if (persistQueue.length > 0) {
+      queueMicrotask(() => {
+        persistQueue.forEach(({ orderId, payload }) => {
+          saveFieldsBatch(orderId, payload);
+        });
+      });
+    }
   }, [orderItemsMap, products]);
 
-  // Auto-fetch rate estimates whenever the orders list changes (initial load + after refresh)
-  // Only fires for draft orders that have both weight and city populated.
+  // Throttle rate-estimate fetches — fire them one-by-one with a 300ms gap
+  // so page load doesn't hammer the API with N concurrent requests.
   useEffect(() => {
     const drafts = orders.filter(
       (o) => o.status === "draft" && o.weight && o.city,
     );
     if (drafts.length === 0) return;
-    for (const order of drafts) {
-      // Only trigger if we don't already have an estimate for this order
-      if (!rateEstimates[order.id]) {
+    let i = 0;
+    const timer = setInterval(() => {
+      while (i < drafts.length) {
+        const order = drafts[i];
+        i++;
+        if (rateEstimates[order.id]) continue;
         fetchRateEstimate(
           order.id,
           parseFloat(String(order.weight || "0")) || 0,
           order.city || "",
           selectedCourier[order.id],
         );
+        break;
       }
-    }
+      if (i >= drafts.length) clearInterval(timer);
+    }, 300);
+    return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders]);
 
   const loadCourierMeta = useCallback(async () => {
-    try {
-      const controller = abortRef.current;
-      const [citiesRes, companiesRes] = await Promise.all([
-        fetch("/api/courier/cities", { signal: controller?.signal }),
-        fetch("/api/courier/companies", { signal: controller?.signal }),
-      ]);
-      let fetchedCities = [];
-      let fetchedCompanies = [];
-      if (citiesRes.ok) {
-        const body = await citiesRes.json();
-        fetchedCities = body.cities || [];
-        setDbCities(fetchedCities);
-      }
-      if (companiesRes.ok) {
-        const body = await companiesRes.json();
-        fetchedCompanies = body.companies || [];
-        setCourierCompanies(fetchedCompanies);
-      }
-
-      // Update cache
-      if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
-      (window as any).__BNS_CACHE__.dbCities = fetchedCities;
-      (window as any).__BNS_CACHE__.courierCompanies = fetchedCompanies;
-    } catch (err: any) {
-      if (err.name !== "AbortError") {
-        // courier not connected — silently ignore
-      }
-    }
+    setCitiesReady(true);
+    setCompaniesReady(true);
   }, []);
 
   async function handleSyncCities() {
@@ -370,8 +374,7 @@ export default function OrdersPage() {
       }
       const body = await res.json();
       setDbCities(body.cities || []);
-      if ((window as any).__BNS_CACHE__)
-        (window as any).__BNS_CACHE__.dbCities = body.cities || [];
+      queryClient.invalidateQueries({ queryKey: ['cities'] });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -390,8 +393,7 @@ export default function OrdersPage() {
       }
       const body = await res.json();
       setCourierCompanies(body.companies || []);
-      if ((window as any).__BNS_CACHE__)
-        (window as any).__BNS_CACHE__.courierCompanies = body.companies || [];
+      queryClient.invalidateQueries({ queryKey: ['companies'] });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -399,39 +401,14 @@ export default function OrdersPage() {
     }
   }
 
+  const queryClient = useQueryClient();
+
   const refresh = useCallback(async () => {
-    try {
-      const controller = abortRef.current;
-      const res = await fetch("/api/orders", { signal: controller?.signal });
-      const body = await res.json();
-      const fetchedOrders = body.orders || [];
-      setOrders(fetchedOrders);
-      hydrateItemsFromOrders(fetchedOrders);
-      if (body.profile) {
-        setProfile(body.profile);
-      }
-      // Update cache
-      if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
-      (window as any).__BNS_CACHE__.orders = fetchedOrders;
-      if (body.profile) (window as any).__BNS_CACHE__.profile = body.profile;
-    } catch (err: any) {
-      if (err.name !== "AbortError") setError(err.message);
-    }
-  }, []);
+    await queryClient.invalidateQueries({ queryKey: ['orders'] });
+  }, [queryClient]);
 
   const loadProducts = useCallback(async () => {
-    const controller = abortRef.current;
-    try {
-      const res = await fetch("/api/products", { signal: controller?.signal });
-      const body = await res.json();
-      const fetchedProducts = body.products || [];
-      setProducts(fetchedProducts);
-      setProductsLoaded(true);
-      if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
-      (window as any).__BNS_CACHE__.products = fetchedProducts;
-    } catch (err: any) {
-      if (err.name !== "AbortError") throw err;
-    }
+    setProductsReady(true);
   }, []);
 
   async function handleExtract() {
@@ -600,6 +577,16 @@ export default function OrdersPage() {
               weight: weightVal > 0 ? String(weightVal) : o.weight,
               shippingType: shippingVal,
             };
+          }
+          return o;
+        }),
+      );
+    } else if (isNoInv) {
+      // Reset weight to 0 so user enters their own
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (o.id === orderId) {
+            return { ...o, weight: "0" };
           }
           return o;
         }),
@@ -917,6 +904,23 @@ export default function OrdersPage() {
 
     const selectedIds = new Set(selectedDrafts);
 
+    // Flush pending auto-saves for selected orders so the DB is up-to-date
+    // before the booking API reads it
+    await Promise.all(
+      Array.from(selectedIds).map(async (id) => {
+        Object.keys(autoSaveRef.current).forEach((key) => {
+          if (key.startsWith(id + "_")) {
+            clearTimeout(autoSaveRef.current[key]);
+            delete autoSaveRef.current[key];
+          }
+        });
+        const items = orderItemsMap[id];
+        if (items && items.length > 0) {
+          await saveFieldsBatch(id, { orderItems: items }).catch(() => {});
+        }
+      }),
+    );
+
     toast("info", "Booking parcels in background...");
 
     // Optimistically transition status locally
@@ -929,6 +933,18 @@ export default function OrdersPage() {
     setActiveTab("booked");
     setBooking(false); // Close loader immediately
 
+    // Build shipping costs map from rate estimates
+    const orderShippingCosts: Record<string, number> = {};
+    selectedIds.forEach((id) => {
+      const est = rateEstimates[id];
+      const opts = est?.serviceOptions || [];
+      const co = selectedCourier[id];
+      const opt = co
+        ? opts.find((s: any) => s.company?.toLowerCase() === co.toLowerCase()) || opts[0]
+        : opts[0];
+      orderShippingCosts[id] = opt ? opt.shippingCost : 0;
+    });
+
     // Perform booking API call in background
     fetch("/api/orders/book", {
       method: "POST",
@@ -936,6 +952,7 @@ export default function OrdersPage() {
       body: JSON.stringify({
         order_ids: Array.from(selectedIds),
         orderCouriers: selectedCourier,
+        orderShippingCosts,
       }),
     })
       .then(async (res) => {
@@ -951,6 +968,9 @@ export default function OrdersPage() {
 
         if (bookedCount > 0) {
           toast("success", `${bookedCount} parcel(s) booked successfully`);
+          // Clear paste area after successful booking
+          setRawText("");
+          sessionStorage.removeItem("bns_raw_text");
         }
 
         // Re-sync with database to ensure exact state matching
@@ -2611,419 +2631,78 @@ export default function OrdersPage() {
                             />
                           </div>
 
-                          {/* Multi-product selector (inventory holders) or Product Info (resellers) */}
+                          {/* Inventory Product Selector */}
                           <div style={{ gridColumn: "1 / -1" }}>
-                            {profile?.accountType === "reseller" ? (
-                              <>
-                                <span
-                                  style={{
-                                    fontSize: "0.7rem",
-                                    color: T.muted,
-                                    fontWeight: 500,
-                                    display: "block",
-                                    marginBottom: 4,
-                                  }}
-                                >
-                                  Product Details (optional)
-                                </span>
-                                <input
-                                  type="text"
-                                  value={order.productInfo ?? ""}
-                                  onChange={(e) => {
-                                    editLocal(order.id, "productInfo", e.target.value);
-                                    autoSaveField(order.id, "productInfo", e.target.value);
-                                  }}
-                                  onBlur={(e) =>
-                                    saveField(order.id, "productInfo", e.target.value)
-                                  }
-                                  style={{
-                                    width: "100%",
-                                    border: `1px solid ${T.border}`,
-                                    borderRadius: 8,
-                                    padding: "7px 10px",
-                                    fontSize: "0.85rem",
-                                    color: T.fg,
-                                    outline: "none",
-                                    boxSizing: "border-box",
-                                  }}
-                                  placeholder="e.g. iPhone 14 Pro Max — 256GB — Gold"
-                                />
-                              </>
-                            ) : (() => {
-                              if (products.length === 0) {
-                                return (
-                                  <div style={{
-                                    border: '1px solid #fecaca',
-                                    background: '#fef2f2',
-                                    borderRadius: 8,
-                                    padding: '12px 14px',
-                                    fontSize: '0.85rem',
-                                    color: '#b91c1c',
-                                    fontWeight: 500,
-                                  }}>
-                                    ⚠ No inventory found.{' '}
-                                    <a href="/products" style={{ color: '#CC785C', textDecoration: 'underline' }}>
-                                      Add products to your inventory
-                                    </a>{' '}
-                                    first, or switch to a Reseller account type.
-                                  </div>
-                                );
-                              }
+                            {(() => {
                               const items = orderItemsMap[order.id] || [];
                               const isOpen = !!productDropdownOpen[order.id];
-                              const searchTerm = (
-                                productSearch[order.id] ?? ""
-                              ).toLowerCase();
+                              const searchTerm = (productSearch[order.id] ?? "").toLowerCase();
                               const allOptions = [
-                                ...products
-                                  .filter(
-                                    (p) =>
-                                      !searchTerm ||
-                                      p.name.toLowerCase().includes(searchTerm),
-                                  )
-                                  .slice(0, 50)
-                                  .map((p) => ({
-                                    id: p.id,
-                                    name: p.name,
-                                    weight: p.weight,
-                                    stock: p.stockQuantity,
-                                  })),
-                                {
-                                  id: "__no_inventory__",
-                                  name: "📦 Book Without Inventory",
-                                  weight: "",
-                                  stock: 0,
-                                },
+                                ...products.filter((p) => !searchTerm || p.name.toLowerCase().includes(searchTerm)).slice(0, 50).map((p) => ({
+                                  id: p.id,
+                                  name: p.name,
+                                  weight: p.weight,
+                                  stock: p.stockQuantity,
+                                })),
+                                { id: "__no_inventory__", name: "📦 Book Without Inventory", weight: "", stock: 0 },
                               ];
-                              const filteredOptions = isOpen
-                                ? allOptions.filter(
-                                    (o) =>
-                                      !searchTerm ||
-                                      o.name.toLowerCase().includes(searchTerm),
-                                  )
-                                : [];
+                              const filteredOptions = isOpen ? allOptions.filter((o) => !searchTerm || o.name.toLowerCase().includes(searchTerm)) : [];
 
                               return (
                                 <div>
-                                  {/* Product list table */}
                                   {items.length > 0 && (
-                                    <div
-                                      style={{
-                                        marginBottom: 10,
-                                        overflowX: "auto",
-                                      }}
-                                    >
-                                      <table
-                                        style={{
-                                          width: "100%",
-                                          borderCollapse: "collapse",
-                                          fontSize: "0.78rem",
-                                          minWidth: 520,
-                                        }}
-                                      >
+                                    <div style={{ marginBottom: 10, overflowX: "auto" }}>
+                                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem", minWidth: 520 }}>
                                         <thead>
-                                          <tr
-                                            style={{
-                                              borderBottom: `1px solid ${T.border}`,
-                                            }}
-                                          >
-                                            <th
-                                              style={{
-                                                padding: "5px 8px",
-                                                textAlign: "left",
-                                                fontWeight: 600,
-                                                color: T.muted,
-                                                fontSize: "0.7rem",
-                                              }}
-                                            >
-                                              Product
-                                            </th>
-                                            <th
-                                              style={{
-                                                padding: "5px 8px",
-                                                textAlign: "center",
-                                                fontWeight: 600,
-                                                color: T.muted,
-                                                fontSize: "0.7rem",
-                                              }}
-                                            >
-                                              Qty
-                                            </th>
-                                            <th
-                                              style={{
-                                                padding: "5px 8px",
-                                                textAlign: "right",
-                                                fontWeight: 600,
-                                                color: T.muted,
-                                                fontSize: "0.7rem",
-                                              }}
-                                            >
-                                              Cost Price
-                                            </th>
-                                            <th
-                                              style={{
-                                                padding: "5px 8px",
-                                                textAlign: "right",
-                                                fontWeight: 600,
-                                                color: T.muted,
-                                                fontSize: "0.7rem",
-                                              }}
-                                            >
-                                              Sale Amount
-                                            </th>
-                                            <th
-                                              style={{
-                                                padding: "5px 8px",
-                                                textAlign: "right",
-                                                fontWeight: 600,
-                                                color: T.muted,
-                                                fontSize: "0.7rem",
-                                              }}
-                                            >
-                                              Line Profit
-                                            </th>
-                                            <th
-                                              style={{
-                                                padding: "5px 8px",
-                                                width: 30,
-                                              }}
-                                            ></th>
+                                          <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+                                            <th style={{ padding: "5px 8px", textAlign: "left", fontWeight: 600, color: T.muted, fontSize: "0.7rem" }}>Product</th>
+                                            <th style={{ padding: "5px 8px", textAlign: "center", fontWeight: 600, color: T.muted, fontSize: "0.7rem" }}>Qty</th>
+                                            <th style={{ padding: "5px 8px", textAlign: "right", fontWeight: 600, color: T.muted, fontSize: "0.7rem" }}>Cost Price</th>
+                                            <th style={{ padding: "5px 8px", textAlign: "right", fontWeight: 600, color: T.muted, fontSize: "0.7rem" }}>Sale Amount</th>
+                                            <th style={{ padding: "5px 8px", textAlign: "right", fontWeight: 600, color: T.muted, fontSize: "0.7rem" }}>Line Profit</th>
+                                            <th style={{ padding: "5px 8px", width: 30 }}></th>
                                           </tr>
                                         </thead>
                                         <tbody>
                                           {items.map((item, ii) => {
-                                            const ip =
-                                              item.costPrice && item.saleAmount
-                                                ? Number(item.saleAmount) -
-                                                  Number(item.costPrice)
-                                                : null;
+                                            const ip = item.costPrice && item.saleAmount ? Number(item.saleAmount) - Number(item.costPrice) : null;
                                             return (
-                                              <tr
-                                                key={item.id}
-                                                style={{
-                                                  borderBottom: `1px solid #f0f0f0`,
-                                                }}
-                                              >
-                                                <td
-                                                  style={{
-                                                    padding: "5px 8px",
-                                                    fontWeight: 500,
-                                                    color: T.fg,
-                                                  }}
-                                                >
-                                                  {item.productName ||
-                                                    products.find(
-                                                      (p) =>
-                                                        p.id === item.productId,
-                                                    )?.name ||
-                                                    "—"}
+                                              <tr key={item.id} style={{ borderBottom: `1px solid #f0f0f0` }}>
+                                                <td style={{ padding: "5px 8px", fontWeight: 500, color: T.fg }}>
+                                                  {item.productName || products.find((p) => p.id === item.productId)?.name || "—"}
                                                 </td>
-                                                <td
-                                                  style={{
-                                                    padding: "5px 8px",
-                                                    textAlign: "center",
-                                                  }}
-                                                >
-                                                  <input
-                                                    type="number"
-                                                    min="1"
-                                                    value={item.quantity}
-                                                    onChange={(e) => {
-                                                      const qty =
-                                                        parseInt(
-                                                          e.target.value,
-                                                        ) || 1;
-                                                      setOrderItemsMap(
-                                                        (prev) => ({
-                                                          ...prev,
-                                                          [order.id]:
-                                                            prev[order.id]?.map(
-                                                              (oi, oii) =>
-                                                                oii === ii
-                                                                  ? {
-                                                                      ...oi,
-                                                                      quantity:
-                                                                        qty,
-                                                                    }
-                                                                  : oi,
-                                                            ) || [],
-                                                        }),
-                                                      );
-                                                    }}
-                                                    onBlur={() => {
-                                                      const its =
-                                                        orderItemsMap[
-                                                          order.id
-                                                        ] || [];
-                                                      saveFieldsBatch(
-                                                        order.id,
-                                                        { orderItems: its },
-                                                      );
-                                                    }}
-                                                    style={{
-                                                      width: 40,
-                                                      border: `1px solid ${T.border}`,
-                                                      borderRadius: 4,
-                                                      padding: "2px 4px",
-                                                      fontSize: "0.78rem",
-                                                      textAlign: "center",
-                                                    }}
-                                                  />
-                                                </td>
-                                                <td
-                                                  style={{
-                                                    padding: "5px 8px",
-                                                    textAlign: "right",
-                                                  }}
-                                                >
+                                                <td style={{ padding: "5px 8px", textAlign: "center" }}>
                                                   {item.productId ? (
-                                                    <span style={{ fontSize: "0.78rem", color: T.muted }}>
-                                                      Rs {Number(item.costPrice || 0).toFixed(0)}
-                                                    </span>
+                                                    <input type="number" min="1" value={item.quantity}
+                                                      onChange={(e) => { const qty = parseInt(e.target.value) || 1; setOrderItemsMap((prev) => ({ ...prev, [order.id]: prev[order.id]?.map((oi, oii) => oii === ii ? { ...oi, quantity: qty } : oi) || [] })); }}
+                                                      onBlur={() => { const its = orderItemsMap[order.id] || []; saveFieldsBatch(order.id, { orderItems: its }); }}
+                                                      style={{ width: 40, border: `1px solid ${T.border}`, borderRadius: 4, padding: "2px 4px", fontSize: "0.78rem", textAlign: "center" }} />
                                                   ) : (
-                                                    <input
-                                                      type="number"
-                                                      inputMode="decimal"
-                                                      value={item.costPrice ?? ""}
-                                                      onChange={(e) => {
-                                                        const cp = e.target.value;
-                                                        setOrderItemsMap(
-                                                          (prev) => ({
-                                                            ...prev,
-                                                            [order.id]:
-                                                              prev[order.id]?.map(
-                                                                (oi, oii) =>
-                                                                  oii === ii
-                                                                    ? {
-                                                                        ...oi,
-                                                                        costPrice:
-                                                                          cp ||
-                                                                          null,
-                                                                      }
-                                                                    : oi,
-                                                              ) || [],
-                                                          }),
-                                                        );
-                                                      }}
-                                                      onBlur={() => {
-                                                        const its =
-                                                          orderItemsMap[
-                                                            order.id
-                                                          ] || [];
-                                                        saveFieldsBatch(
-                                                          order.id,
-                                                          { orderItems: its },
-                                                        );
-                                                      }}
-                                                      style={{
-                                                        width: 70,
-                                                        border: `1px solid ${T.border}`,
-                                                        borderRadius: 4,
-                                                        padding: "2px 4px",
-                                                        fontSize: "0.78rem",
-                                                        textAlign: "right",
-                                                      }}
-                                                    />
+                                                    <span style={{ fontSize: "0.78rem", color: T.muted }}>—</span>
                                                   )}
                                                 </td>
-                                                <td
-                                                  style={{
-                                                    padding: "5px 8px",
-                                                    textAlign: "right",
-                                                  }}
-                                                >
-                                                  <input
-                                                    type="number"
-                                                    inputMode="decimal"
-                                                    value={
-                                                      item.saleAmount ?? ""
-                                                    }
-                                                    onChange={(e) => {
-                                                      const sa = e.target.value;
-                                                      setOrderItemsMap(
-                                                        (prev) => ({
-                                                          ...prev,
-                                                          [order.id]:
-                                                            prev[order.id]?.map(
-                                                              (oi, oii) =>
-                                                                oii === ii
-                                                                  ? {
-                                                                      ...oi,
-                                                                      saleAmount:
-                                                                        sa ||
-                                                                        null,
-                                                                    }
-                                                                  : oi,
-                                                            ) || [],
-                                                        }),
-                                                      );
-                                                    }}
-                                                    onBlur={() => {
-                                                      const its =
-                                                        orderItemsMap[
-                                                          order.id
-                                                        ] || [];
-                                                      saveFieldsBatch(
-                                                        order.id,
-                                                        { orderItems: its },
-                                                      );
-                                                    }}
-                                                    style={{
-                                                      width: 70,
-                                                      border: `1px solid ${T.border}`,
-                                                      borderRadius: 4,
-                                                      padding: "2px 4px",
-                                                      fontSize: "0.78rem",
-                                                      textAlign: "right",
-                                                    }}
-                                                  />
+                                                <td style={{ padding: "5px 8px", textAlign: "right" }}>
+                                                  {item.productId ? (
+                                                    <span style={{ fontSize: "0.78rem", color: T.muted }}>Rs {Number(item.costPrice || 0).toFixed(0)}</span>
+                                                  ) : (
+                                                    <input type="number" inputMode="decimal" value={item.costPrice ?? ""}
+                                                      onChange={(e) => { const cp = e.target.value; setOrderItemsMap((prev) => ({ ...prev, [order.id]: prev[order.id]?.map((oi, oii) => oii === ii ? { ...oi, costPrice: cp || null } : oi) || [] })); }}
+                                                      onBlur={() => { const its = orderItemsMap[order.id] || []; saveFieldsBatch(order.id, { orderItems: its }); }}
+                                                      style={{ width: 70, border: `1px solid ${T.border}`, borderRadius: 4, padding: "2px 4px", fontSize: "0.78rem", textAlign: "right" }} />
+                                                  )}
                                                 </td>
-                                                <td
-                                                  style={{
-                                                    padding: "5px 8px",
-                                                    textAlign: "right",
-                                                    fontWeight: 600,
-                                                    color:
-                                                      ip && ip > 0
-                                                        ? "#16a34a"
-                                                        : T.muted,
-                                                  }}
-                                                >
-                                                  {ip != null
-                                                    ? `Rs ${ip.toFixed(0)}`
-                                                    : "—"}
+                                                <td style={{ padding: "5px 8px", textAlign: "right" }}>
+                                                  <input type="number" inputMode="decimal" value={item.saleAmount ?? ""}
+                                                    onChange={(e) => { const sa = e.target.value; setOrderItemsMap((prev) => ({ ...prev, [order.id]: prev[order.id]?.map((oi, oii) => oii === ii ? { ...oi, saleAmount: sa || null } : oi) || [] })); }}
+                                                    onBlur={() => { const its = orderItemsMap[order.id] || []; saveFieldsBatch(order.id, { orderItems: its }); }}
+                                                    style={{ width: 70, border: `1px solid ${T.border}`, borderRadius: 4, padding: "2px 4px", fontSize: "0.78rem", textAlign: "right" }} />
                                                 </td>
-                                                <td
-                                                  style={{
-                                                    padding: "5px 8px",
-                                                    textAlign: "center",
-                                                  }}
-                                                >
-                                                  <button
-                                                    onClick={() => {
-                                                      setOrderItemsMap(
-                                                        (prev) => ({
-                                                          ...prev,
-                                                          [order.id]:
-                                                            prev[
-                                                              order.id
-                                                            ]?.filter(
-                                                              (_, oii) =>
-                                                                oii !== ii,
-                                                            ) || [],
-                                                        }),
-                                                      );
-                                                    }}
-                                                    style={{
-                                                      background: "none",
-                                                      border: "none",
-                                                      color: "#dc2626",
-                                                      cursor: "pointer",
-                                                      padding: 2,
-                                                    }}
-                                                  >
-                                                    <X size={12} />
-                                                  </button>
+                                                <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 600, color: ip && ip > 0 ? "#16a34a" : T.muted }}>
+                                                  {ip != null ? `Rs ${ip.toFixed(0)}` : "—"}
+                                                </td>
+                                                <td style={{ padding: "5px 8px", textAlign: "center" }}>
+                                                  <button onClick={() => setOrderItemsMap((prev) => ({ ...prev, [order.id]: prev[order.id]?.filter((_, oii) => oii !== ii) || [] }))}
+                                                    style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", padding: 2 }}><X size={12} /></button>
                                                 </td>
                                               </tr>
                                             );
@@ -3033,343 +2712,56 @@ export default function OrdersPage() {
                                     </div>
                                   )}
 
-                                  {/* Totals */}
-                                  {items.length > 0 &&
-                                    (() => {
-                                      const totalCost = items.reduce(
-                                        (s, i) =>
-                                          s +
-                                          Number(i.costPrice || 0) * i.quantity,
-                                        0,
-                                      );
-                                      const totalSale = items.reduce(
-                                        (s, i) =>
-                                          s +
-                                          Number(i.saleAmount || 0) *
-                                            i.quantity,
-                                        0,
-                                      );
-                                      const hasAllCost = items.every(
-                                        (i) =>
-                                          i.costPrice &&
-                                          Number(i.costPrice) > 0,
-                                      );
-                                      const totalProfit = hasAllCost
-                                        ? totalSale - totalCost
-                                        : null;
-                                      return (
-                                        <div
-                                          style={{
-                                            display: "flex",
-                                            gap: 16,
-                                            justifyContent: "flex-end",
-                                            padding: "6px 8px",
-                                            background: T.card,
-                                            borderRadius: 6,
-                                            marginBottom: 8,
-                                            fontSize: "0.78rem",
-                                            fontWeight: 600,
-                                          }}
-                                        >
-                                          <span>
-                                            Total Cost:{" "}
-                                            <span style={{ color: T.muted }}>
-                                              Rs {totalCost.toFixed(0)}
-                                            </span>
-                                          </span>
-                                          <span>
-                                            Total Sale:{" "}
-                                            <span style={{ color: T.fg }}>
-                                              Rs {totalSale.toFixed(0)}
-                                            </span>
-                                          </span>
-                                          <span>
-                                            Total Profit:{" "}
-                                            <span
-                                              style={{
-                                                color:
-                                                  totalProfit && totalProfit > 0
-                                                    ? "#16a34a"
-                                                    : "#d97706",
-                                              }}
-                                            >
-                                              {totalProfit != null
-                                                ? `Rs ${totalProfit.toFixed(0)}`
-                                                : "Pending Cost Price"}
-                                            </span>
-                                          </span>
-                                        </div>
-                                      );
-                                    })()}
+                                  {items.length > 0 && (() => {
+                                    const totalCost = items.reduce((s, i) => s + Number(i.costPrice || 0) * i.quantity, 0);
+                                    const totalSale = items.reduce((s, i) => s + Number(i.saleAmount || 0) * i.quantity, 0);
+                                    const hasAllCost = items.every((i) => i.costPrice && Number(i.costPrice) > 0);
+                                    const totalProfit = hasAllCost ? totalSale - totalCost : null;
+                                    return (
+                                      <div style={{ display: "flex", gap: 16, justifyContent: "flex-end", padding: "6px 8px", background: T.card, borderRadius: 6, marginBottom: 8, fontSize: "0.78rem", fontWeight: 600 }}>
+                                        <span>Total Cost: <span style={{ color: T.muted }}>Rs {totalCost.toFixed(0)}</span></span>
+                                        <span>Total Sale: <span style={{ color: T.fg }}>Rs {totalSale.toFixed(0)}</span></span>
+                                        <span>Total Profit: <span style={{ color: totalProfit && totalProfit > 0 ? "#16a34a" : "#d97706" }}>{totalProfit != null ? `Rs ${totalProfit.toFixed(0)}` : "Pending Cost Price"}</span></span>
+                                      </div>
+                                    );
+                                  })()}
 
-                                  {/* Product search + Add button */}
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      gap: 8,
-                                      alignItems: "center",
-                                    }}
-                                  >
-                                    <div
-                                      style={{ position: "relative", flex: 1 }}
-                                    >
-                                      <input
-                                        type="text"
-                                        value={
-                                          isOpen
-                                            ? (productSearch[order.id] ?? "")
-                                            : ""
-                                        }
-                                        autoComplete="off"
-                                        placeholder="— Add product or Book Without Inventory —"
-                                        onChange={(e) => {
-                                          setProductSearch((prev) => ({
-                                            ...prev,
-                                            [order.id]: e.target.value,
-                                          }));
-                                          setProductDropdownOpen((prev) => ({
-                                            ...prev,
-                                            [order.id]: true,
-                                          }));
-                                          setActiveProductIndex((prev) => ({
-                                            ...prev,
-                                            [order.id]: 0,
-                                          }));
-                                        }}
-                                        onFocus={() => {
-                                          setProductSearch((prev) => ({
-                                            ...prev,
-                                            [order.id]: "",
-                                          }));
-                                          setProductDropdownOpen((prev) => ({
-                                            ...prev,
-                                            [order.id]: true,
-                                          }));
-                                          setActiveProductIndex((prev) => ({
-                                            ...prev,
-                                            [order.id]: 0,
-                                          }));
-                                        }}
-                                        onBlur={() => {
-                                          setTimeout(
-                                            () =>
-                                              setProductDropdownOpen(
-                                                (prev) => ({
-                                                  ...prev,
-                                                  [order.id]: false,
-                                                }),
-                                              ),
-                                            220,
-                                          );
-                                        }}
+                                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                    <div style={{ position: "relative", flex: 1 }}>
+                                      <input type="text" value={isOpen ? (productSearch[order.id] ?? "") : ""} autoComplete="off" placeholder="— Search & add product —"
+                                        onChange={(e) => { setProductSearch((prev) => ({ ...prev, [order.id]: e.target.value })); setProductDropdownOpen((prev) => ({ ...prev, [order.id]: true })); setActiveProductIndex((prev) => ({ ...prev, [order.id]: 0 })); }}
+                                        onFocus={() => { setProductSearch((prev) => ({ ...prev, [order.id]: "" })); setProductDropdownOpen((prev) => ({ ...prev, [order.id]: true })); setActiveProductIndex((prev) => ({ ...prev, [order.id]: 0 })); }}
+                                        onBlur={() => { setTimeout(() => setProductDropdownOpen((prev) => ({ ...prev, [order.id]: false })), 220); }}
                                         onKeyDown={(e) => {
-                                          if (e.key === "ArrowDown") {
-                                            e.preventDefault();
-                                            setActiveProductIndex((prev) => ({
-                                              ...prev,
-                                              [order.id]: Math.min(
-                                                (prev[order.id] || 0) + 1,
-                                                filteredOptions.length - 1,
-                                              ),
-                                            }));
-                                          } else if (e.key === "ArrowUp") {
-                                            e.preventDefault();
-                                            setActiveProductIndex((prev) => ({
-                                              ...prev,
-                                              [order.id]: Math.max(
-                                                (prev[order.id] || 0) - 1,
-                                                0,
-                                              ),
-                                            }));
-                                          } else if (e.key === "Enter") {
-                                            e.preventDefault();
-                                            const idx =
-                                              activeProductIndex[order.id] || 0;
-                                            if (filteredOptions[idx]) {
-                                              addOrderItem(
-                                                order.id,
-                                                filteredOptions[idx].id,
-                                                filteredOptions[idx].name,
-                                              );
-                                              setProductSearch((prev) => ({
-                                                ...prev,
-                                                [order.id]: "",
-                                              }));
-                                              setProductDropdownOpen(
-                                                (prev) => ({
-                                                  ...prev,
-                                                  [order.id]: false,
-                                                }),
-                                              );
-                                            }
-                                          } else if (e.key === "Escape") {
-                                            setProductDropdownOpen((prev) => ({
-                                              ...prev,
-                                              [order.id]: false,
-                                            }));
-                                          }
+                                          if (e.key === "ArrowDown") { e.preventDefault(); setActiveProductIndex((prev) => ({ ...prev, [order.id]: Math.min((prev[order.id] || 0) + 1, filteredOptions.length - 1) })); }
+                                          else if (e.key === "ArrowUp") { e.preventDefault(); setActiveProductIndex((prev) => ({ ...prev, [order.id]: Math.max((prev[order.id] || 0) - 1, 0) })); }
+                                          else if (e.key === "Enter") { e.preventDefault(); const idx = activeProductIndex[order.id] || 0; if (filteredOptions[idx]) { addOrderItem(order.id, filteredOptions[idx].id, filteredOptions[idx].name); setProductSearch((prev) => ({ ...prev, [order.id]: "" })); setProductDropdownOpen((prev) => ({ ...prev, [order.id]: false })); } }
+                                          else if (e.key === "Escape") { setProductDropdownOpen((prev) => ({ ...prev, [order.id]: false })); }
                                         }}
-                                        style={{
-                                          width: "100%",
-                                          border: `1px solid ${T.border}`,
-                                          borderRadius: 10,
-                                          padding: "9px 12px",
-                                          fontSize: "0.82rem",
-                                          color: T.fg,
-                                          background: T.bg,
-                                          outline: "none",
-                                          boxSizing: "border-box",
-                                        }}
-                                      />
+                                        style={{ width: "100%", border: `1px solid ${T.border}`, borderRadius: 10, padding: "9px 12px", fontSize: "0.82rem", color: T.fg, background: T.bg, outline: "none", boxSizing: "border-box" }} />
                                       {isOpen && (
-                                        <div
-                                          className="bns-dropdown"
-                                          style={{
-                                            position: "absolute",
-                                            zIndex: 999,
-                                            top: "100%",
-                                            left: 0,
-                                            right: 0,
-                                            background: "#fff",
-                                            border: `1px solid ${T.border}`,
-                                            borderRadius: 10,
-                                            boxShadow:
-                                              "0 8px 28px rgba(0,0,0,0.1)",
-                                            maxHeight: 220,
-                                            overflowY: "auto",
-                                            marginTop: 4,
-                                            padding: 4,
-                                          }}
-                                        >
-                                          {filteredOptions.length > 0 ? (
-                                            filteredOptions.map((opt, idx) => {
-                                              const isActive =
-                                                (activeProductIndex[order.id] ||
-                                                  0) === idx;
-                                              const isNoInv =
-                                                opt.id === "__no_inventory__";
-                                              return (
-                                                <div
-                                                  key={opt.id}
-                                                  onMouseDown={(e) => {
-                                                    e.preventDefault();
-                                                  }}
-                                                  onClick={() => {
-                                                    addOrderItem(
-                                                      order.id,
-                                                      opt.id,
-                                                      opt.name,
-                                                    );
-                                                    setProductSearch(
-                                                      (prev) => ({
-                                                        ...prev,
-                                                        [order.id]: "",
-                                                      }),
-                                                    );
-                                                    setProductDropdownOpen(
-                                                      (prev) => ({
-                                                        ...prev,
-                                                        [order.id]: false,
-                                                      }),
-                                                    );
-                                                  }}
-                                                  onMouseEnter={() =>
-                                                    setActiveProductIndex(
-                                                      (prev) => ({
-                                                        ...prev,
-                                                        [order.id]: idx,
-                                                      }),
-                                                    )
-                                                  }
-                                                  style={{
-                                                    padding: "9px 12px",
-                                                    fontSize: "0.82rem",
-                                                    cursor: "pointer",
-                                                    color: T.fg,
-                                                    background: isActive
-                                                      ? T.accentLight
-                                                      : "transparent",
-                                                    borderRadius: 6,
-                                                    display: "flex",
-                                                    justifyContent:
-                                                      "space-between",
-                                                    alignItems: "center",
-                                                    gap: 8,
-                                                    borderBottom: isNoInv
-                                                      ? `1px solid ${T.border}`
-                                                      : "none",
-                                                  }}
-                                                >
-                                                  <span>
-                                                    {isNoInv ? (
-                                                      opt.name
-                                                    ) : (
-                                                      <>
-                                                        {opt.name} ·{" "}
-                                                        <span
-                                                          style={{
-                                                            color: T.muted,
-                                                          }}
-                                                        >
-                                                          stock: {opt.stock}
-                                                        </span>
-                                                      </>
-                                                    )}
-                                                  </span>
-                                                  {!isNoInv && (
-                                                    <span
-                                                      style={{
-                                                        fontSize: "0.75rem",
-                                                        color: T.muted,
-                                                      }}
-                                                    >
-                                                      {opt.weight} kg
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              );
-                                            })
-                                          ) : (
-                                            <div
-                                              style={{
-                                                padding: "9px 12px",
-                                                fontSize: "0.82rem",
-                                                color: T.muted,
-                                              }}
-                                            >
-                                              No product found
-                                            </div>
+                                        <div className="bns-dropdown" style={{ position: "absolute", zIndex: 999, top: "100%", left: 0, right: 0, background: "#fff", border: `1px solid ${T.border}`, borderRadius: 10, boxShadow: "0 8px 28px rgba(0,0,0,0.1)", maxHeight: 220, overflowY: "auto", marginTop: 4, padding: 4 }}>
+                                          {filteredOptions.length > 0 ? filteredOptions.map((opt, idx) => {
+                                            const isActive = (activeProductIndex[order.id] || 0) === idx;
+                                            const isNoInv = opt.id === "__no_inventory__";
+                                            return (
+                                              <div key={opt.id} onMouseDown={(e) => e.preventDefault()}
+                                                onClick={() => { addOrderItem(order.id, opt.id, opt.name); setProductSearch((prev) => ({ ...prev, [order.id]: "" })); setProductDropdownOpen((prev) => ({ ...prev, [order.id]: false })); }}
+                                                onMouseEnter={() => setActiveProductIndex((prev) => ({ ...prev, [order.id]: idx }))}
+                                                style={{ padding: "9px 12px", fontSize: "0.82rem", cursor: "pointer", color: T.fg, background: isActive ? T.accentLight : "transparent", borderRadius: 6, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, borderBottom: isNoInv ? `1px solid ${T.border}` : "none" }}>
+                                                <span>{isNoInv ? opt.name : <>{opt.name} · <span style={{ color: T.muted }}>stock: {opt.stock}</span></>}</span>
+                                                {!isNoInv && <span style={{ fontSize: "0.75rem", color: T.muted }}>{opt.weight} kg</span>}
+                                              </div>
+                                            );
+                                          }) : (
+                                            <div style={{ padding: "9px 12px", fontSize: "0.82rem", color: T.muted }}>No product found</div>
                                           )}
                                         </div>
                                       )}
                                     </div>
                                     {items.length > 0 && (
-                                      <button
-                                        onClick={() => {
-                                          setProductDropdownOpen((prev) => ({
-                                            ...prev,
-                                            [order.id]: true,
-                                          }));
-                                          setProductSearch((prev) => ({
-                                            ...prev,
-                                            [order.id]: "",
-                                          }));
-                                        }}
-                                        style={{
-                                          border: `1px solid ${T.border}`,
-                                          background: T.bg,
-                                          borderRadius: 8,
-                                          padding: "9px 12px",
-                                          fontSize: "0.78rem",
-                                          color: T.accent,
-                                          fontWeight: 600,
-                                          cursor: "pointer",
-                                          whiteSpace: "nowrap",
-                                          display: "flex",
-                                          alignItems: "center",
-                                          gap: 4,
-                                        }}
-                                      >
+                                      <button onClick={() => { setProductDropdownOpen((prev) => ({ ...prev, [order.id]: true })); setProductSearch((prev) => ({ ...prev, [order.id]: "" })); }}
+                                        style={{ border: `1px solid ${T.border}`, background: T.bg, borderRadius: 8, padding: "9px 12px", fontSize: "0.78rem", color: T.accent, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}>
                                         <Plus size={13} /> Add Product
                                       </button>
                                     )}
@@ -3443,51 +2835,25 @@ export default function OrdersPage() {
                                 marginBottom: 4,
                               }}
                             >
-                              Sale Amount (Rs)
+                              Total Sale Amount (Rs)
                             </span>
-                            {profile?.accountType === "reseller" ? (
-                              <input
-                                type="number"
-                                inputMode="decimal"
-                                value={order.saleAmount ?? ""}
-                                onChange={(e) =>
-                                  editLocal(order.id, "saleAmount", e.target.value)
-                                }
-                                onBlur={(e) =>
-                                  saveFieldsBatch(order.id, {
-                                    saleAmount: parseFloat(e.target.value) || 0,
-                                  })
-                                }
-                                style={{
-                                  width: "100%",
-                                  border: `1px solid ${T.border}`,
-                                  borderRadius: 8,
-                                  padding: "7px 10px",
-                                  fontSize: "0.85rem",
-                                  color: T.fg,
-                                  outline: "none",
-                                  boxSizing: "border-box",
-                                }}
-                              />
-                            ) : (
-                              <div
-                                style={{
-                                  width: "100%",
-                                  border: `1px solid ${T.border}`,
-                                  borderRadius: 8,
-                                  padding: "7px 10px",
-                                  fontSize: "0.85rem",
-                                  color: T.muted,
-                                  background: T.card,
-                                  boxSizing: "border-box",
-                                  minHeight: 34,
-                                }}
-                              >
-                                {order.saleAmount
-                                  ? `Rs ${Number(order.saleAmount).toLocaleString("en-PK")}`
-                                  : "—"}
-                              </div>
-                            )}
+                            <div
+                              style={{
+                                width: "100%",
+                                border: `1px solid ${T.border}`,
+                                borderRadius: 8,
+                                padding: "7px 10px",
+                                fontSize: "0.85rem",
+                                color: T.muted,
+                                background: T.card,
+                                boxSizing: "border-box",
+                                minHeight: 34,
+                              }}
+                            >
+                              {order.saleAmount
+                                ? `Rs ${Number(order.saleAmount).toLocaleString("en-PK")}`
+                                : "—"}
+                            </div>
                           </div>
 
                           <div>
@@ -3500,51 +2866,25 @@ export default function OrdersPage() {
                                 marginBottom: 4,
                               }}
                             >
-                              Cost Price (Rs)
+                              Total Cost Price (Rs)
                             </span>
-                            {profile?.accountType === "reseller" ? (
-                              <input
-                                type="number"
-                                inputMode="decimal"
-                                value={order.costPrice ?? ""}
-                                onChange={(e) =>
-                                  editLocal(order.id, "costPrice", e.target.value)
-                                }
-                                onBlur={(e) =>
-                                  saveFieldsBatch(order.id, {
-                                    costPrice: parseFloat(e.target.value) || 0,
-                                  })
-                                }
-                                style={{
-                                  width: "100%",
-                                  border: `1px solid ${T.border}`,
-                                  borderRadius: 8,
-                                  padding: "7px 10px",
-                                  fontSize: "0.85rem",
-                                  color: T.fg,
-                                  outline: "none",
-                                  boxSizing: "border-box",
-                                }}
-                              />
-                            ) : (
-                              <div
-                                style={{
-                                  width: "100%",
-                                  border: `1px solid ${T.border}`,
-                                  borderRadius: 8,
-                                  padding: "7px 10px",
-                                  fontSize: "0.85rem",
-                                  color: T.muted,
-                                  background: T.card,
-                                  boxSizing: "border-box",
-                                  minHeight: 34,
-                                }}
-                              >
-                                {order.costPrice
-                                  ? `Rs ${Number(order.costPrice).toLocaleString("en-PK")}`
-                                  : "—"}
-                              </div>
-                            )}
+                            <div
+                              style={{
+                                width: "100%",
+                                border: `1px solid ${T.border}`,
+                                borderRadius: 8,
+                                padding: "7px 10px",
+                                fontSize: "0.85rem",
+                                color: T.muted,
+                                background: T.card,
+                                boxSizing: "border-box",
+                                minHeight: 34,
+                              }}
+                            >
+                              {order.costPrice
+                                ? `Rs ${Number(order.costPrice).toLocaleString("en-PK")}`
+                                : "—"}
+                            </div>
                           </div>
 
                           {/* Weight & Shipping Type */}
@@ -3564,36 +2904,34 @@ export default function OrdersPage() {
                               {fieldErrors[order.id]?.has("weight") ? " *" : ""}
                             </span>
                             {(() => {
-                              const isReseller = profile?.accountType === "reseller";
                               const its = orderItemsMap[order.id] || [];
-                              const allInventory = !isReseller && its.length > 0 && its.every(i => i.productId);
-                              return (
-                                <input
-                                  type="number"
-                                  inputMode="decimal"
-                                  step="0.1"
-                                  ref={(el) => {
-                                    fieldRefs.current[`${order.id}-weight`] = el;
-                                  }}
-                                  value={order.weight ?? ""}
-                                  readOnly={allInventory}
-                                  onChange={(e) =>
-                                    !allInventory && editLocal(order.id, "weight", e.target.value)
-                                  }
-                                  onBlur={(e) =>
-                                    !allInventory && handleWeightChange(order.id, e.target.value)
-                                  }
+                              const allInventory = its.length > 0 && its.every(i => i.productId);
+                              return allInventory ? (
+                                <div
                                   style={{
                                     width: "100%",
                                     border: `1px solid ${fieldErrors[order.id]?.has("weight") ? "#dc2626" : T.border}`,
                                     borderRadius: 8,
                                     padding: "7px 10px",
                                     fontSize: "0.85rem",
-                                    color: allInventory ? T.muted : T.fg,
-                                    background: allInventory ? T.card : T.bg,
-                                    outline: "none",
+                                    color: T.muted,
+                                    background: T.card,
                                     boxSizing: "border-box",
+                                    minHeight: 34,
                                   }}
+                                >
+                                  {order.weight ? `${Number(order.weight).toFixed(1)} kg` : "—"}
+                                </div>
+                              ) : (
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  step="0.1"
+                                  ref={(el) => { fieldRefs.current[`${order.id}-weight`] = el; }}
+                                  value={order.weight ?? ""}
+                                  onChange={(e) => editLocal(order.id, "weight", e.target.value)}
+                                  onBlur={(e) => handleWeightChange(order.id, e.target.value)}
+                                  style={{ width: "100%", border: `1px solid ${fieldErrors[order.id]?.has("weight") ? "#dc2626" : T.border}`, borderRadius: 8, padding: "7px 10px", fontSize: "0.85rem", color: T.fg, outline: "none", boxSizing: "border-box" }}
                                 />
                               );
                             })()}
@@ -3998,7 +3336,7 @@ export default function OrdersPage() {
                                 parseFloat(order.costPrice || "0") || 0;
                               const hasCostPrice = costPrice > 0;
                               const profit = hasCostPrice
-                                ? saleAmount - costPrice
+                                ? saleAmount - costPrice - shippingCost
                                 : null;
                               const hasEstimate = !!opt;
 
@@ -4330,7 +3668,6 @@ export default function OrdersPage() {
                         "Tracking",
                         "Status",
                         "Price",
-                        "Profit",
                         "Date+Time",
                       ].map((h) => (
                         <th
@@ -4558,6 +3895,23 @@ export default function OrdersPage() {
                             >
                               Booked
                             </span>
+                            <button
+                              onClick={() => handleUnbook(o.id)}
+                              disabled={unbooking}
+                              title="Unbook this shipment"
+                              style={{
+                                marginLeft: 8,
+                                background: "none",
+                                border: `1px solid ${T.border}`,
+                                borderRadius: 6,
+                                padding: "2px 8px",
+                                cursor: "pointer",
+                                fontSize: "0.65rem",
+                                color: T.muted,
+                              }}
+                            >
+                              Unbook
+                            </button>
                           </td>
 
                           {/* Sell Price */}
@@ -4595,22 +3949,6 @@ export default function OrdersPage() {
                             )}
                           </td>
 
-                          {/* Profit */}
-                          <td
-                            style={{
-                              padding: "8px 12px",
-                              fontSize: "0.82rem",
-                              fontWeight: 600,
-                              color:
-                                Number(o.profit ?? 0) > 0
-                                  ? "#16a34a"
-                                  : "#0a0a0a",
-                            }}
-                          >
-                            {o.profit
-                              ? `Rs ${Number(o.profit).toLocaleString("en-PK")}`
-                              : "—"}
-                          </td>
                           <td
                             style={{
                               padding: "8px 12px",
@@ -4665,6 +4003,22 @@ export default function OrdersPage() {
                         </div>
                         <div style={{ textAlign: "right" }}>
                           <div className="bns-order-card-status">Booked</div>
+                          <button
+                            onClick={() => handleUnbook(o.id)}
+                            disabled={unbooking}
+                            style={{
+                              marginTop: 4,
+                              background: "none",
+                              border: `1px solid ${T.border}`,
+                              borderRadius: 6,
+                              padding: "2px 10px",
+                              cursor: "pointer",
+                              fontSize: "0.65rem",
+                              color: T.muted,
+                            }}
+                          >
+                            Unbook
+                          </button>
                           <div style={{ marginTop: 8 }}>
                             {o.sellingPrice && (
                               <div
@@ -4678,11 +4032,6 @@ export default function OrdersPage() {
                                 {Number(o.sellingPrice).toLocaleString("en-PK")}
                               </div>
                             )}
-                            <div className="bns-order-card-profit">
-                              {o.profit
-                                ? `Rs ${Number(o.profit).toLocaleString("en-PK")}`
-                                : "—"}
-                            </div>
                           </div>
                         </div>
                       </div>

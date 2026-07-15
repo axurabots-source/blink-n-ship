@@ -4,6 +4,7 @@ import "./globals.css";
 import AppSidebar from "@/components/AppSidebar";
 import { ToastProvider } from "@/components/Toast";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import QueryProvider from "@/components/QueryProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,12 +38,14 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex">
-        <ToastProvider>
-          <ErrorBoundary>
-            <AppSidebar />
-            <main className="flex-1 ml-60">{children}</main>
-          </ErrorBoundary>
-        </ToastProvider>
+        <QueryProvider>
+          <ToastProvider>
+            <ErrorBoundary>
+              <AppSidebar />
+              <main className="flex-1 ml-60">{children}</main>
+            </ErrorBoundary>
+          </ToastProvider>
+        </QueryProvider>
       </body>
     </html>
   );

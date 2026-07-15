@@ -21,20 +21,17 @@ import {
     DollarSign,
     Package,
     Eye,
+    MessageCircle,
 } from 'lucide-react';
 import Image from 'next/image';
+import ContactFounderModal from './ContactFounderModal';
 
-function useMainLinks(accountType: string | null) {
-    const links = [
-        { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { href: '/orders', label: 'Booking', icon: PackageSearch },
-        { href: '/ledger', label: 'Ledger', icon: BookOpen },
-    ];
-    if (accountType === 'inventory_holder') {
-        links.splice(2, 0, { href: '/products', label: 'Inventory', icon: Boxes });
-    }
-    return links;
-}
+const mainLinks = [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/orders', label: 'Booking', icon: PackageSearch },
+    { href: '/products', label: 'Inventory', icon: Boxes },
+    { href: '/ledger', label: 'Ledger', icon: BookOpen },
+];
 
 const courierSubLinks = [
     { href: '/courier', label: 'Overview', icon: LayoutDashboard },
@@ -51,8 +48,7 @@ export default function AppSidebar() {
     const router = useRouter();
     const supabase = createClient();
     const [mobileOpen, setMobileOpen] = useState(false);
-    const [accountType, setAccountType] = useState<string | null>(null);
-
+    const [contactOpen, setContactOpen] = useState(false);
     const isCourierRoute = pathname.startsWith('/courier');
     const [courierOpen, setCourierOpen] = useState(isCourierRoute);
 
@@ -61,43 +57,10 @@ export default function AppSidebar() {
     }, [pathname, isCourierRoute]);
 
     useEffect(() => {
-        // Always fetch from DB as source of truth to prevent stale localStorage
-        // from showing wrong portal (e.g. inventory_holder for a reseller user)
-        fetch('/api/profile')
-            .then(r => r.json())
-            .then(b => {
-                if (b.profile?.accountType) {
-                    setAccountType(b.profile.accountType);
-                    // Sync localStorage with the confirmed DB value
-                    localStorage.setItem('bns_account_type', b.profile.accountType);
-                } else if (b.profile === null) {
-                    // Profile doesn't exist yet — try again after a short delay
-                    setTimeout(() => {
-                        fetch('/api/profile')
-                            .then(r => r.json())
-                            .then(b2 => {
-                                if (b2.profile?.accountType) {
-                                    setAccountType(b2.profile.accountType);
-                                    localStorage.setItem('bns_account_type', b2.profile.accountType);
-                                }
-                            })
-                            .catch(() => {});
-                    }, 2000);
-                }
-            })
-            .catch(() => {
-                // Fallback to localStorage only if network fails
-                const cached = localStorage.getItem('bns_account_type');
-                if (cached) setAccountType(cached);
-            });
-    }, []);
-
-    useEffect(() => {
         setMobileOpen(false);
     }, [pathname]);
 
-    const hideOn = ['/login', '/account-type'];
-    if (hideOn.includes(pathname)) return null;
+    if (pathname === '/login') return null;
 
     async function handleLogout() {
         await supabase.auth.signOut();
@@ -141,23 +104,6 @@ export default function AppSidebar() {
                         <X size={18} aria-hidden="true" />
                     </button>
                 </div>
-                {accountType && (
-                    <div style={{
-                        marginTop: 8,
-                        fontSize: '0.6rem',
-                        fontWeight: 700,
-                        color: '#CC785C',
-                        background: 'rgba(204,120,92,0.12)',
-                        border: '1px solid rgba(204,120,92,0.2)',
-                        borderRadius: 20,
-                        padding: '3px 10px',
-                        display: 'inline-block',
-                        letterSpacing: '0.06em',
-                        textTransform: 'uppercase',
-                    }}>
-                        {accountType === 'inventory_holder' ? 'Inventory Holder Portal' : 'Reseller Portal'}
-                    </div>
-                )}
             </div>
 
             {/* Nav links */}
@@ -170,7 +116,7 @@ export default function AppSidebar() {
                 flexDirection: 'column',
                 gap: '4px',
             }}>
-                {useMainLinks(accountType).map((link) => {
+                {mainLinks.map((link) => {
                     const Icon = link.icon;
                     const active = pathname === link.href;
 
@@ -316,7 +262,7 @@ export default function AppSidebar() {
                 </div>
             </nav>
 
-            {/* Settings link above Logout */}
+            {/* Settings link */}
             <div style={{ padding: '4px 12px 8px', flexShrink: 0 }}>
                 <Link
                     href="/settings"
@@ -342,11 +288,37 @@ export default function AppSidebar() {
                 </Link>
             </div>
 
+            {/* Contact Founder */}
+            <div style={{ padding: '0 12px 8px', flexShrink: 0 }}>
+                <button
+                    onClick={() => setContactOpen(true)}
+                    className="sidebar-link"
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '10px 16px',
+                        borderRadius: '8px',
+                        fontSize: '0.875rem',
+                        fontWeight: 500,
+                        width: '100%',
+                        background: 'transparent',
+                        color: '#a3a3a3',
+                        border: 'none',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                    }}
+                >
+                    <MessageCircle size={16} strokeWidth={2} aria-hidden="true" />
+                    Contact Founder
+                </button>
+            </div>
+
             {/* Logout bottom section */}
             <div style={{
                 padding: '16px 12px',
                 borderTop: '1px solid #1a1a1a',
-                marginTop: 'auto',
                 flexShrink: 0,
             }}>
                 <button
@@ -373,6 +345,8 @@ export default function AppSidebar() {
                     Logout
                 </button>
             </div>
+
+            <ContactFounderModal open={contactOpen} onClose={() => setContactOpen(false)} />
         </div>
     );
 

@@ -39,8 +39,6 @@ const PERMISSION_MODULES = [
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('profile');
-  const [accountType, setAccountType] = useState('');
-
   const renderTabContent = useMemo(() => {
     switch (activeTab) {
       case 'profile': return <CompanyProfileTab />;
@@ -191,7 +189,6 @@ function CompanyProfileTab() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         {formRow('Business Name', Building2, 'businessName', 'text', false, 'Your business name')}
-        {formRow('Account Type', Globe, 'accountType', 'text', true)}
         {formRow('Email Address', Mail, 'email', 'email', false, 'owner@example.com')}
         {formRow('Phone Number', Phone, 'phone', 'tel', false, '+92 300 1234567')}
       </div>

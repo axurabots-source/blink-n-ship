@@ -19,8 +19,13 @@ export async function GET(request: Request) {
             return NextResponse.json({ shippingCost: null, serviceOptions: [] });
         }
 
-        // Auto-determine service type label (for reference / suggestion only — NOT used as a DB filter)
-        const suggested = weight > 3 ? 'overland' : weight > 1 ? 'detain' : 'overnight';
+        // Auto-determine expected service type from weight, then derive matching
+        // Flaship codes so we filter rate cards (OVN/overnight, DET/detain, OVL/overland).
+        const suggestedLabel = weight > 3 ? 'overland' : weight > 1 ? 'detain' : 'overnight';
+        const serviceMatchTerms = [
+            suggestedLabel,
+            suggestedLabel === 'overland' ? 'ovl' : suggestedLabel === 'detain' ? 'det' : 'ovn',
+        ];
 
         // Look up the destination city zone from our synced OperationalCity table
         const destCity = await prisma.operationalCity.findFirst({
@@ -35,12 +40,18 @@ export async function GET(request: Request) {
 
         const destZone = destCity?.zone || null;
 
-        // Fetch ALL rate cards for this merchant — let weight slab do the matching.
-        // Do NOT filter by serviceType: the stored values come straight from Flaship and
-        // may not match the suggested label (e.g. Flaship stores "OVL" not "overland").
+        // Fetch rate cards matching the user, company, zone, and service type combo.
+        // Match by both the label and the common Flaship shorthand code.
         const baseWhere: any = { userId: user.id };
         if (company) baseWhere.companyCode = { contains: company, mode: 'insensitive' };
         if (destZone) baseWhere.destinationZone = destZone;
+        if (serviceMatchTerms.length === 1) {
+            baseWhere.serviceType = { contains: serviceMatchTerms[0], mode: 'insensitive' };
+        } else {
+            baseWhere.OR = serviceMatchTerms.map((t) => ({
+                serviceType: { contains: t, mode: 'insensitive' },
+            }));
+        }
 
         const cards = await prisma.rateCard.findMany({ where: baseWhere });
 
@@ -53,6 +64,9 @@ export async function GET(request: Request) {
                       where: {
                           userId: user.id,
                           ...(company ? { companyCode: { contains: company, mode: 'insensitive' } } : {}),
+                          ...(serviceMatchTerms.length === 1
+                              ? { serviceType: { contains: serviceMatchTerms[0], mode: 'insensitive' } }
+                              : { OR: serviceMatchTerms.map(t => ({ serviceType: { contains: t, mode: 'insensitive' } })) }),
                       },
                   });
 
@@ -124,7 +138,7 @@ export async function GET(request: Request) {
             weight,
             city,
             destZone,
-            suggested,
+            suggested: suggestedLabel,
             serviceOptions,
             shippingCost: primaryCost,
         });

@@ -19,7 +19,7 @@ export async function GET() {
         data: {
           id: user.id,
           businessName: user.user_metadata?.business_name || user.user_metadata?.businessName || 'My Business',
-          accountType: user.user_metadata?.account_type || 'reseller',
+          accountType: '',
           email: user.email || null,
           phone: user.phone || user.user_metadata?.phone || null,
           flashipConnected: false,

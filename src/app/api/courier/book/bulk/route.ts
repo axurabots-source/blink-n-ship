@@ -94,13 +94,6 @@ export async function POST(request: Request) {
                         },
                     });
 
-                    if (order.productId) {
-                        await tx.product.update({
-                            where: { id: order.productId },
-                            data: { stockQuantity: { decrement: order.quantity || 1 } },
-                        });
-                    }
-
                     await tx.order.update({
                         where: { id: order.id },
                         data: {

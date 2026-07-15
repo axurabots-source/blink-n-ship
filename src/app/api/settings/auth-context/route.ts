@@ -14,7 +14,6 @@ export async function GET() {
       profile: {
         id: ctx.profile.id,
         businessName: ctx.profile.businessName,
-        accountType: ctx.profile.accountType,
       },
     });
   } catch (err: any) {

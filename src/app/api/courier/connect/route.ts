@@ -66,7 +66,7 @@ export async function POST(request: Request) {
                 create: {
                     id: user.id,
                     businessName: user.user_metadata?.business_name || 'My Business',
-                    accountType: user.user_metadata?.account_type || 'reseller',
+                    accountType: '',
                     flashipConnected: true,
                 },
             }),

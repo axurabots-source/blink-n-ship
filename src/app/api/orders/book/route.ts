@@ -36,6 +36,7 @@ export async function POST(request: Request) {
       courierOption,
       pickupLocationId,
       orderCouriers,
+      orderShippingCosts,
     } = body;
 
     if (!checkIdempotency(makeIdempotencyKey(user.id, "book", body))) {
@@ -74,7 +75,7 @@ export async function POST(request: Request) {
         userId: user.id,
         status: "draft",
       },
-      include: { product: true },
+      include: { product: true, items: true },
     });
 
     if (orders.length === 0) {
@@ -227,57 +228,41 @@ export async function POST(request: Request) {
             },
           });
 
-          if (order.productId) {
-            const product = await tx.product.findUnique({
-              where: { id: order.productId },
-              select: { stockQuantity: true },
-            });
-            if (
-              !product ||
-              Number(product.stockQuantity) < (order.quantity || 1)
-            ) {
-              throw new Error(
-                `Insufficient stock for product "${order.productInfo || order.product?.name || "unknown"}". Available: ${product?.stockQuantity ?? 0}, requested: ${order.quantity || 1}`,
-              );
+          // Calculate net profit: saleAmount - costPrice - shippingCost
+          // Fall back to summing order items if order-level totals are null
+          let saleAmt = order.saleAmount != null ? Number(order.saleAmount) : null;
+          let costAmt = order.costPrice != null ? Number(order.costPrice) : null;
+          if (saleAmt == null || costAmt == null) {
+            const items = order.items || [];
+            if (saleAmt == null) {
+              saleAmt = items.reduce((s, i) => s + Number(i.saleAmount || 0) * i.quantity, 0) || null;
             }
-            await tx.product.update({
-              where: { id: order.productId },
-              data: { stockQuantity: { decrement: order.quantity } },
-            });
+            if (costAmt == null) {
+              costAmt = items.reduce((s, i) => s + Number(i.costPrice || 0) * i.quantity, 0) || null;
+            }
           }
+          const shipCost = orderShippingCosts?.[order.id] ?? 0;
+          const netProfit =
+            saleAmt != null && costAmt != null
+              ? saleAmt - costAmt - Number(shipCost)
+              : null;
 
-          // Deduct stock for order items
-          for (const item of await tx.orderItem.findMany({
-            where: { orderId: order.id },
-          })) {
-            if (item.productId) {
-              const prod = await tx.product.findUnique({
-                where: { id: item.productId },
-                select: { stockQuantity: true },
-              });
-              if (!prod || Number(prod.stockQuantity) < (item.quantity || 1)) {
-                throw new Error(
-                  `Insufficient stock for "${item.productName || "product"}". Available: ${prod?.stockQuantity ?? 0}, requested: ${item.quantity || 1}`,
-                );
-              }
-              await tx.product.update({
-                where: { id: item.productId },
-                data: { stockQuantity: { decrement: item.quantity } },
-              });
-            }
-          }
+          const bookUpdates: Record<string, any> = {
+            status: "booked",
+            trackingNumber: result.trackingId,
+            labelUrl: result.labelUrl,
+            courierProvider: realCompanyName,
+            courierStatus: "booked",
+            shipmentId: shipment.id,
+            bookedAt: new Date(),
+            profit: netProfit,
+          };
+          if (saleAmt != null && order.saleAmount == null) bookUpdates.saleAmount = saleAmt;
+          if (costAmt != null && order.costPrice == null) bookUpdates.costPrice = costAmt;
 
           await tx.order.update({
             where: { id: order.id },
-            data: {
-              status: "booked",
-              trackingNumber: result.trackingId,
-              labelUrl: result.labelUrl,
-              courierProvider: realCompanyName,
-              courierStatus: "booked",
-              shipmentId: shipment.id,
-              bookedAt: new Date(),
-            },
+            data: bookUpdates,
           });
 
           return shipment;
@@ -357,27 +342,8 @@ export async function PATCH(request: Request) {
           }
         }
 
-        // Restore stock and reset order atomically
+        // Reset order atomically
         await prisma.$transaction(async (tx) => {
-          if (order.productId) {
-            await tx.product.update({
-              where: { id: order.productId },
-              data: { stockQuantity: { increment: order.quantity } },
-            });
-          }
-
-          // Restore stock for order items
-          for (const item of await tx.orderItem.findMany({
-            where: { orderId },
-          })) {
-            if (item.productId) {
-              await tx.product.update({
-                where: { id: item.productId },
-                data: { stockQuantity: { increment: item.quantity } },
-              });
-            }
-          }
-
           await tx.order.update({
             where: { id: orderId },
             data: {

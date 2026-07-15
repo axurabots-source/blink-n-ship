@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/Toast';
 import {
@@ -14,6 +14,7 @@ import {
     ImageOff,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { useOrders, useProducts } from '@/lib/queries';
 
 const ProfitChart = dynamic(() => import('@/components/ProfitChart'), {
     ssr: false,
@@ -65,48 +66,12 @@ const T = {
 
 export default function LedgerPage() {
     const { toast } = useToast();
-    const [orders, setOrders] = useState<Order[]>([]);
-    const [products, setProducts] = useState<Product[]>([]);
+    const { data: ordersData, isLoading: ordersLoading } = useOrders();
+    const { data: productsData } = useProducts();
     const [expandedRow, setExpandedRow] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        Promise.all([refresh(), loadProducts()]);
-
-        window.addEventListener('focus', refresh);
-        const interval = setInterval(refresh, 30000);
-        return () => {
-            window.removeEventListener('focus', refresh);
-            clearInterval(interval);
-        };
-    }, []);
-
-    async function refresh() {
-        try {
-            const res = await fetch('/api/orders');
-            if (res.ok) {
-                const body = await res.json();
-                setOrders(body.orders || []);
-            }
-        } catch (err) {
-            console.error('Ledger refresh error:', err);
-            toast('error', 'Failed to refresh ledger data');
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    async function loadProducts() {
-        try {
-            const res = await fetch('/api/products');
-            if (res.ok) {
-                const body = await res.json();
-                setProducts(body.products || []);
-            }
-        } catch (err) {
-            console.error('Products load error:', err);
-        }
-    }
+    const orders = (ordersData?.orders || []) as Order[];
+    const products = (productsData || []) as Product[];
 
     const bookedOrders = orders.filter((o) => o.status === 'booked');
 
@@ -161,7 +126,7 @@ export default function LedgerPage() {
         return null;
     };
 
-    if (loading) {
+    if (ordersLoading) {
         return (
             <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: T.bg, gap: 16 }}>
                 <motion.div

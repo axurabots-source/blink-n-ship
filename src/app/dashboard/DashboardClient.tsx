@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   ShoppingBag,
@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useDashboard } from "@/lib/queries";
+import { useQueryClient } from "@tanstack/react-query";
 
 const ProfitChart = dynamic(() => import("@/components/ProfitChart"), {
   ssr: false,
@@ -75,57 +77,17 @@ const fadeUp = {
 };
 
 export default function DashboardClient() {
-  const [data, setData] = useState<{
-    businessName: string | null;
-    accountType: string | null;
-    stats: any;
-    graphData: GraphDataPoint[];
-    todayOrders: TodayOrder[];
-  } | null>(null);
-
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data, isLoading, isFetching, isError, refetch } = useDashboard();
   const [refreshing, setRefreshing] = useState(false);
-
-  async function fetchDashboard() {
-    try {
-      const res = await fetch("/api/dashboard");
-      if (res.ok) {
-        const json = await res.json();
-        const payload = {
-          businessName: json.businessName,
-          accountType: json.accountType,
-          stats: json.stats,
-          graphData: json.graphData,
-          todayOrders: json.todayOrders,
-        };
-        setData(payload);
-        if (!(window as any).__BNS_CACHE__) (window as any).__BNS_CACHE__ = {};
-        (window as any).__BNS_CACHE__.dashboard = payload;
-      }
-    } catch (e) {
-      console.error("Failed to load dashboard:", e);
-    }
-  }
-
-  useEffect(() => {
-    const globalCache = (window as any).__BNS_CACHE__?.dashboard;
-    if (globalCache) {
-      setData(globalCache);
-    }
-
-    fetchDashboard().finally(() => setLoading(false));
-
-    const interval = setInterval(fetchDashboard, 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   async function handleRefresh() {
     setRefreshing(true);
-    await fetchDashboard();
+    await refetch();
     setRefreshing(false);
   }
 
-  if (!data && !loading) {
+  if (isError && !data) {
     return (
       <div
         style={{
@@ -169,7 +131,7 @@ export default function DashboardClient() {
     );
   }
 
-  if (loading && !data) {
+  if (isLoading) {
     // Premium minimalist skeleton loader instead of blank page/heavy spinners
     return (
       <div
@@ -227,9 +189,7 @@ export default function DashboardClient() {
     );
   }
 
-  const { businessName, accountType, stats, graphData, todayOrders } = data!;
-  const accountLabel =
-    accountType === "inventory_holder" ? "Inventory Holder" : "Reseller";
+  const { businessName, stats, graphData, todayOrders } = data!;
 
   const missingCostPriceOrders = stats.missingCostPrice || 0;
 
@@ -374,20 +334,6 @@ export default function DashboardClient() {
           >
             {businessName ? `${businessName}` : "Dashboard"}
           </h1>
-          <span
-            style={{
-              fontSize: "0.75rem",
-              color: T.accent,
-              fontWeight: 600,
-              background: "#fff5f0",
-              border: "1px solid #f0d4c8",
-              padding: "2px 10px",
-              borderRadius: 20,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {accountLabel}
-          </span>
           <button
             onClick={handleRefresh}
             disabled={refreshing}

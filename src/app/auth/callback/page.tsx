@@ -16,7 +16,7 @@ export default function AuthCallbackPage() {
                 router.push('/login');
                 return;
             }
-            router.push('/account-type');
+            router.push('/courier/connect');
         }
         handleRedirect();
     }, [router, supabase]);

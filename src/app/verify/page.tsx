@@ -51,12 +51,8 @@ function VerifyContent() {
                 throw new Error(verifyError.message);
             }
 
-            // Successfully verified and logged in. Redirect to account type selection
-            const params = new URLSearchParams();
-            if (businessName) params.set('businessName', businessName);
-            if (phone) params.set('phone', phone);
-            
-            router.push('/account-type?' + params.toString());
+            // Successfully verified and logged in. Redirect to courier connect
+            router.push('/courier/connect');
         } catch (err: any) {
             setError(err.message || 'Verification failed. Please check your code.');
             setLoading(false);

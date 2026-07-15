@@ -457,10 +457,7 @@ export default function LoginPage() {
 
         if (otpPurpose === 'signup') {
             localStorage.removeItem('bns_account_type');
-            const params = new URLSearchParams();
-            if (businessName.trim()) params.set('businessName', businessName.trim());
-            if (phone.trim()) params.set('phone', phone.trim());
-            router.push('/account-type?' + params.toString());
+            router.push('/courier/connect');
         }
     }
 

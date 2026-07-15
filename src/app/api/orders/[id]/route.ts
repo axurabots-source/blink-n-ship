@@ -50,8 +50,8 @@ export async function PATCH(
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    // Profit recalculation using saleAmount - costPrice
-    if ("saleAmount" in updates || "costPrice" in updates) {
+    // Profit recalculation using saleAmount - costPrice (only for drafts)
+    if (existing.status === 'draft' && ("saleAmount" in updates || "costPrice" in updates)) {
       const sale =
         updates.saleAmount !== undefined
           ? updates.saleAmount
@@ -69,28 +69,67 @@ export async function PATCH(
 
     let order;
 
-    // Handle orderItems array from body
+    // Handle orderItems array from body — recalculate parent totals
     const orderItemsBody = body.orderItems;
     if (orderItemsBody && Array.isArray(orderItemsBody)) {
+      let totalCost = 0;
+      let totalSale = 0;
+      let totalWeight = 0;
+      let hasCost = false;
+      let hasSale = false;
+      let allInventory = orderItemsBody.length > 0;
       await prisma.$transaction(async (tx) => {
         await tx.orderItem.deleteMany({ where: { orderId: id } });
         for (const item of orderItemsBody) {
           if (!item.productId && !item.productName) continue;
+          if (!item.productId) allInventory = false;
           const cost = item.costPrice ? Number(item.costPrice) : null;
           const sale = item.saleAmount ? Number(item.saleAmount) : null;
+          const qty = item.quantity || 1;
           const itemProfit =
             cost != null && sale != null ? Number(sale) - Number(cost) : null;
+          if (cost) { totalCost += cost * qty; hasCost = true; }
+          if (sale) { totalSale += sale * qty; hasSale = true; }
           await tx.orderItem.create({
             data: {
               orderId: id,
               productId: item.productId || null,
               productName: item.productName || null,
-              quantity: item.quantity || 1,
+              quantity: qty,
               costPrice: cost,
               saleAmount: sale,
               profit: itemProfit,
             },
           });
+        }
+        // Look up weights for inventory products
+        if (allInventory) {
+          const invItems = orderItemsBody.filter((i: any) => i.productId && i.productId !== '__no_inventory__');
+          if (invItems.length > 0) {
+            const prodIds = [...new Set(invItems.map((i: any) => i.productId))];
+            const invProducts = await tx.product.findMany({
+              where: { id: { in: prodIds } },
+              select: { id: true, weight: true },
+            });
+            const weightMap = new Map(invProducts.map((p) => [p.id, parseFloat(String(p.weight ?? '0')) || 0]));
+            for (const item of invItems) {
+              const w = weightMap.get(item.productId) || 0;
+              totalWeight += w * (item.quantity || 1);
+            }
+          }
+        }
+        // Update parent order totals
+        const parentUpdates: Record<string, any> = {};
+        if (hasSale) parentUpdates.saleAmount = totalSale;
+        if (hasCost) parentUpdates.costPrice = totalCost;
+        if (hasSale && hasCost) {
+          parentUpdates.profit = totalSale - totalCost;
+        } else if (hasSale || hasCost) {
+          parentUpdates.profit = null;
+        }
+        if (totalWeight > 0) parentUpdates.weight = totalWeight;
+        if (Object.keys(parentUpdates).length > 0) {
+          await tx.order.update({ where: { id }, data: parentUpdates });
         }
       });
     }
@@ -129,25 +168,6 @@ export async function PATCH(
       updates.bookedAt = null;
 
       order = await prisma.$transaction(async (tx) => {
-        if (existing.productId) {
-          await tx.product.update({
-            where: { id: existing.productId },
-            data: { stockQuantity: { increment: existing.quantity } },
-          });
-        }
-
-        // Restore stock for order items
-        for (const item of await tx.orderItem.findMany({
-          where: { orderId: id },
-        })) {
-          if (item.productId) {
-            await tx.product.update({
-              where: { id: item.productId },
-              data: { stockQuantity: { increment: item.quantity } },
-            });
-          }
-        }
-
         return tx.order.update({
           where: { id, userId: user.id },
           data: updates,
@@ -202,25 +222,6 @@ export async function DELETE(
     }
 
     await prisma.$transaction(async (tx) => {
-      if (existing.status === "booked" && existing.productId) {
-        await tx.product.update({
-          where: { id: existing.productId },
-          data: { stockQuantity: { increment: existing.quantity } },
-        });
-      }
-
-      // Restore stock for order items on delete
-      for (const item of await tx.orderItem.findMany({
-        where: { orderId: id },
-      })) {
-        if (item.productId && existing.status === "booked") {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stockQuantity: { increment: item.quantity } },
-          });
-        }
-      }
-
       await tx.order.delete({
         where: { id, userId: user.id },
       });

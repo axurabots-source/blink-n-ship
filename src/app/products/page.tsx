@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { uploadProductImage, validateProductImage } from '@/lib/uploadProductImage';
@@ -33,11 +32,6 @@ type Product = {
     createdAt: string;
 };
 
-type Profile = {
-    id: string;
-    accountType: 'inventory_holder' | 'reseller';
-};
-
 const T = {
     bg: '#ffffff',
     fg: '#0a0a0a',
@@ -59,9 +53,7 @@ const titleCase = (str: string) => {
 };
 
 export default function ProductsPage() {
-    const router = useRouter();
     const [products, setProducts] = useState<Product[]>([]);
-    const [profile, setProfile] = useState<Profile | null>(null);
     const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
     
     // Separate Search Queries
@@ -98,25 +90,12 @@ export default function ProductsPage() {
 
     useEffect(() => {
         refresh();
-        loadProfile();
     }, []);
-
-    useEffect(() => {
-        if (profile && profile.accountType === 'reseller') {
-            router.replace('/dashboard');
-        }
-    }, [profile, router]);
 
     async function refresh() {
         const res = await fetch('/api/products');
         const body = await res.json();
         setProducts(body.products || []);
-    }
-
-    async function loadProfile() {
-        const res = await fetch('/api/orders');
-        const body = await res.json();
-        if (body.profile) setProfile(body.profile);
     }
 
     // Custom XMLHttpRequest upload to show real progress (steps 1 to 10)
@@ -460,7 +439,7 @@ export default function ProductsPage() {
                 <div>
                     <h1 style={{ fontSize: '1.6rem', fontWeight: 700, color: T.fg, margin: 0 }}>Inventory Catalog</h1>
                     <p style={{ color: T.muted, fontSize: '0.875rem', margin: '4px 0 0' }}>
-                        {profile?.accountType === 'inventory_holder' ? 'Inventory Holder' : 'Reseller'} Catalog · {products.length} product(s)
+                        Catalog · {products.length} product(s)
                     </p>
                 </div>
                 <motion.button
@@ -599,12 +578,10 @@ export default function ProductsPage() {
                                     <input required type="number" inputMode="decimal" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem' }} />
                                 </label>
 
-                                {profile?.accountType === 'inventory_holder' && (
-                                    <label style={{ display: 'block' }}>
-                                        <span style={{ fontSize: '0.72rem', color: T.muted, display: 'block', marginBottom: 4 }}>Stock Quantity</span>
-                                        <input type="number" inputMode="numeric" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem' }} />
-                                    </label>
-                                )}
+                                <label style={{ display: 'block' }}>
+                                    <span style={{ fontSize: '0.72rem', color: T.muted, display: 'block', marginBottom: 4 }}>Stock Quantity</span>
+                                    <input type="number" inputMode="numeric" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} style={{ width: '100%', border: `1px solid ${T.border}`, borderRadius: 8, padding: '7px 10px', fontSize: '0.85rem' }} />
+                                </label>
 
                                 <label style={{ display: 'block' }}>
                                     <span style={{ fontSize: '0.72rem', color: T.muted, display: 'block', marginBottom: 4 }}>Weight (kg)</span>
@@ -725,8 +702,8 @@ export default function ProductsPage() {
                     <AnimatePresence>
                         {filteredProducts.map((p, idx) => {
                             const isSelected = selectedProducts.has(p.id);
-                            const outOfStock = profile?.accountType === 'inventory_holder' && p.stockQuantity === 0;
-                            const lowStock = profile?.accountType === 'inventory_holder' && p.stockQuantity > 0 && p.stockQuantity < 5;
+                            const outOfStock = p.stockQuantity === 0;
+                            const lowStock = p.stockQuantity > 0 && p.stockQuantity < 5;
 
                             return (
                                 <motion.div
@@ -806,11 +783,9 @@ export default function ProductsPage() {
                                                 {p.weight || '0'} kg
                                             </span>
                                             
-                                            {profile?.accountType === 'inventory_holder' && (
-                                                <span style={{ fontSize: '0.62rem', background: outOfStock ? '#fef2f2' : lowStock ? '#fff7ed' : '#f0fdf4', border: `1px solid ${outOfStock ? '#fecaca' : lowStock ? '#fed7aa' : '#bbf7d0'}`, borderRadius: '4px', padding: '1px 5px', color: outOfStock ? '#dc2626' : lowStock ? '#c2410c' : '#15803d', fontWeight: 600 }}>
-                                                    {outOfStock ? 'Out of stock' : lowStock ? 'Low stock' : `${p.stockQuantity} stock`}
-                                                </span>
-                                            )}
+                                            <span style={{ fontSize: '0.62rem', background: outOfStock ? '#fef2f2' : lowStock ? '#fff7ed' : '#f0fdf4', border: `1px solid ${outOfStock ? '#fecaca' : lowStock ? '#fed7aa' : '#bbf7d0'}`, borderRadius: '4px', padding: '1px 5px', color: outOfStock ? '#dc2626' : lowStock ? '#c2410c' : '#15803d', fontWeight: 600 }}>
+                                                {outOfStock ? 'Out of stock' : lowStock ? 'Low stock' : `${p.stockQuantity} stock`}
+                                            </span>
                                         </div>
 
                                         <div style={{ display: 'flex', gap: 8 }}>
