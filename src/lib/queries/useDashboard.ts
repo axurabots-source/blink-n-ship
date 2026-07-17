@@ -1,7 +1,34 @@
 import { useQuery } from '@tanstack/react-query';
 
+export type TodayOrder = {
+  id: string;
+  customerName: string | null;
+  city: string | null;
+  productName: string;
+  trackingNumber: string | null;
+  profit: number;
+  costPrice: number | null;
+};
+
+export type DashboardData = {
+  businessName: string | null;
+  stats: {
+    totalOrders: number;
+    bookedToday: number;
+    totalRevenue: number;
+    totalProfit: number;
+    totalBooked: number;
+    inTransit: number;
+    delivered: number;
+    returned: number;
+    missingCostPrice: number;
+  };
+  graphData: Array<{ dateStr: string; profit: number; revenue: number }>;
+  todayOrders: TodayOrder[];
+};
+
 export function useDashboard() {
-  return useQuery({
+  return useQuery<DashboardData>({
     queryKey: ['dashboard'],
     queryFn: async () => {
       const res = await fetch('/api/dashboard');
