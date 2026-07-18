@@ -86,13 +86,7 @@ export default function ShipmentsPage() {
             if (contentType.includes('application/pdf')) {
                 const blob = await res.blob();
                 const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'labels.pdf';
-                a.style.display = 'none';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                window.location.href = url;
                 setTimeout(() => URL.revokeObjectURL(url), 60000);
             } else {
                 const body = await res.json();
