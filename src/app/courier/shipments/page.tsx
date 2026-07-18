@@ -71,20 +71,11 @@ export default function ShipmentsPage() {
         return !q || o.customerName?.toLowerCase().includes(q) || o.trackingNumber?.toLowerCase().includes(q) || o.city?.toLowerCase().includes(q);
     });
 
-    function openLabelUrl(url: string) {
-        const a = document.createElement('a');
-        a.href = url;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-    }
-
     async function handleGenerateLabel() {
         const cns = Array.from(selected).map((id) => orders.find((o) => o.id === id)?.trackingNumber).filter(Boolean) as string[];
         if (!cns.length) { setError('No tracking numbers to generate labels for.'); return; }
+        // Open blank popup synchronously (during user gesture — not blocked on mobile)
+        const popup = window.open('', '_blank');
         setGeneratingLabel(true); setError('');
         try {
             const res = await fetch('/api/courier/labels', {
@@ -94,14 +85,23 @@ export default function ShipmentsPage() {
             });
             if (!res.ok) { const b = await res.json(); throw new Error(b.error || 'Label generation failed'); }
             const contentType = res.headers.get('content-type') || '';
+            let url: string | null = null;
             if (contentType.includes('application/pdf')) {
                 const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                openLabelUrl(url);
-                setTimeout(() => URL.revokeObjectURL(url), 60000);
+                url = URL.createObjectURL(blob);
             } else {
                 const body = await res.json();
-                if (body.labelUrl) openLabelUrl(body.labelUrl);
+                url = body.labelUrl || null;
+            }
+            if (url) {
+                if (popup && !popup.closed) {
+                    popup.location.href = url;
+                } else {
+                    window.location.href = url;
+                }
+                if (contentType.includes('application/pdf')) {
+                    setTimeout(() => URL.revokeObjectURL(url!), 60000);
+                }
             }
         } catch (err: any) { setError(err.message); }
         finally { setGeneratingLabel(false); }
