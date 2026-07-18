@@ -71,6 +71,17 @@ export default function ShipmentsPage() {
         return !q || o.customerName?.toLowerCase().includes(q) || o.trackingNumber?.toLowerCase().includes(q) || o.city?.toLowerCase().includes(q);
     });
 
+    function openLabelUrl(url: string) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
     async function handleGenerateLabel() {
         const cns = Array.from(selected).map((id) => orders.find((o) => o.id === id)?.trackingNumber).filter(Boolean) as string[];
         if (!cns.length) { setError('No tracking numbers to generate labels for.'); return; }
@@ -85,10 +96,12 @@ export default function ShipmentsPage() {
             const contentType = res.headers.get('content-type') || '';
             if (contentType.includes('application/pdf')) {
                 const blob = await res.blob();
-                window.open(URL.createObjectURL(blob), '_blank');
+                const url = URL.createObjectURL(blob);
+                openLabelUrl(url);
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
             } else {
                 const body = await res.json();
-                if (body.labelUrl) window.open(body.labelUrl, '_blank');
+                if (body.labelUrl) openLabelUrl(body.labelUrl);
             }
         } catch (err: any) { setError(err.message); }
         finally { setGeneratingLabel(false); }

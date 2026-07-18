@@ -16,9 +16,14 @@ export async function GET(
 
         const shipment = await prisma.shipment.findFirst({
             where: { userId: user.id, trackingNumber },
+            include: {
+                company: { select: { name: true } },
+            },
         });
 
         if (!shipment) return NextResponse.json({ error: 'Shipment not found' }, { status: 404 });
+
+        const courierProvider = shipment.company?.name || (shipment.bookingRequest as any)?.courierCompany || null;
 
         const [timeline, snapshots] = await Promise.all([
             prisma.shipmentTimeline.findMany({
@@ -32,7 +37,7 @@ export async function GET(
             }),
         ]);
 
-        return NextResponse.json({ shipment, timeline, snapshots });
+        return NextResponse.json({ shipment: { ...shipment, courierProvider }, timeline, snapshots });
     } catch (err: any) {
         return apiError(err);
     }

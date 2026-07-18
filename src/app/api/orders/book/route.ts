@@ -222,7 +222,7 @@ export async function POST(request: Request) {
             data: {
               shipmentId: shipment.id,
               status: "booked",
-              description: `Booked via ${courierCompany}`,
+              description: `Booked via ${realCompanyName}`,
               source: "system",
               occurredAt: new Date(),
             },

@@ -117,12 +117,25 @@ export default function TrackingPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
+            className="tr-page"
             style={{ padding: '40px 48px', fontFamily: 'var(--font-geist-sans), sans-serif', color: T.fg, backgroundColor: T.bg, minHeight: '100vh' }}
         >
-            <style>{'@keyframes pulse-dot { 0%, 100% { transform: scale(1); } 50% { transform: scale(2.2); } }'}</style>
+            <style>{`
+                @keyframes pulse-dot { 0%, 100% { transform: scale(1); } 50% { transform: scale(2.2); } }
+                @media (max-width: 768px) {
+                    .tr-page { padding: 20px 16px !important; }
+                    .tr-stats { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+                    .tr-stats-card { padding: 14px 16px !important; }
+                    .tr-header { flex-direction: column !important; align-items: stretch !important; }
+                    .tr-scan-form { max-width: 100% !important; }
+                    .tr-radar-grid > div { flex-direction: column !important; align-items: stretch !important; }
+                    .tr-radar-item { padding: 12px 14px !important; }
+                    .tr-filter-input { width: 100% !important; }
+                }
+            `}</style>
 
             {/* Header with radar feel */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
+            <div className="tr-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
                 <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -147,12 +160,13 @@ export default function TrackingPage() {
             </div>
 
             {/* Stats Scanline */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
+            <div className="tr-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
                 {statCards.map((card) => {
                     const Icon = card.icon;
                     return (
                         <motion.div
                             key={card.label}
+                            className="tr-stats-card"
                             initial={{ opacity: 0, y: 12 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.3 }}
@@ -171,7 +185,7 @@ export default function TrackingPage() {
 
             {/* Scanner Input */}
             <div style={{ marginBottom: 32 }}>
-                <form onSubmit={handleTrackSubmit} style={{ display: 'flex', gap: 10, maxWidth: 500 }}>
+                <form onSubmit={handleTrackSubmit} className="tr-scan-form" style={{ display: 'flex', gap: 10, maxWidth: 500 }}>
                     <div style={{ position: 'relative', flex: 1 }}>
                         <Search size={14} color={T.muted} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
                         <input
@@ -212,6 +226,11 @@ export default function TrackingPage() {
                             <div>
                                 <span style={{ fontSize: '0.7rem', fontWeight: 600, color: T.muted, textTransform: 'uppercase' }}>Scanned Shipment</span>
                                 <div style={{ fontSize: '1rem', fontWeight: 700, color: T.accent }}>{trackingInput}</div>
+                                {trackingResult.shipment?.courierProvider && (
+                                    <div style={{ fontSize: '0.75rem', color: T.muted, marginTop: 2 }}>
+                                        {trackingResult.shipment.courierProvider}
+                                    </div>
+                                )}
                             </div>
                             <div style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: 20, background: STATUS_STYLES[trackingResult.shipment?.status]?.bg || T.accentLight, color: STATUS_STYLES[trackingResult.shipment?.status]?.fg || T.accent }}>
                                 {STATUS_STYLES[trackingResult.shipment?.status]?.label || trackingResult.shipment?.status || 'Active'}
@@ -235,6 +254,7 @@ export default function TrackingPage() {
                         placeholder="Filter by name, tracking, city..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
+                        className="tr-filter-input"
                         style={{ padding: '8px 12px', fontSize: '0.8rem', border: '1px solid ' + T.border, borderRadius: 8, outline: 'none', width: 240 }}
                     />
                 </div>
@@ -253,7 +273,7 @@ export default function TrackingPage() {
                         </Link>
                     </motion.div>
                 ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div className="tr-radar-grid" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <AnimatePresence>
                             {filtered.map((order, idx) => {
                                 const st = order.shipment?.status || order.courierStatus || order.status;
@@ -265,6 +285,7 @@ export default function TrackingPage() {
                                         initial={{ opacity: 0, x: -16 }}
                                         animate={{ opacity: 1, x: 0 }}
                                         transition={{ delay: idx * 0.04, duration: 0.25 }}
+                                        className="tr-radar-item"
                                         style={{ padding: '14px 18px', background: '#fff', border: '1px solid ' + T.border, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 14 }}
                                     >
                                         <div style={{ width: 36, height: 36, borderRadius: 8, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -279,6 +300,11 @@ export default function TrackingPage() {
                                                 {order.trackingNumber && (
                                                     <span style={{ fontSize: '0.7rem', color: T.accent, fontWeight: 600, background: T.accentLight, padding: '1px 6px', borderRadius: 4 }}>
                                                         #{order.trackingNumber}
+                                                    </span>
+                                                )}
+                                                {order.courierProvider && (
+                                                    <span style={{ fontSize: '0.68rem', color: T.muted, fontWeight: 500, background: T.card, padding: '1px 6px', borderRadius: 4 }}>
+                                                        {order.courierProvider}
                                                     </span>
                                                 )}
                                             </div>
