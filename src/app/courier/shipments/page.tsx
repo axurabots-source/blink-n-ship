@@ -74,8 +74,6 @@ export default function ShipmentsPage() {
     async function handleGenerateLabel() {
         const cns = Array.from(selected).map((id) => orders.find((o) => o.id === id)?.trackingNumber).filter(Boolean) as string[];
         if (!cns.length) { setError('No tracking numbers to generate labels for.'); return; }
-        // Open blank popup synchronously (during user gesture — not blocked on mobile)
-        const popup = window.open('', '_blank');
         setGeneratingLabel(true); setError('');
         try {
             const res = await fetch('/api/courier/labels', {
@@ -85,22 +83,21 @@ export default function ShipmentsPage() {
             });
             if (!res.ok) { const b = await res.json(); throw new Error(b.error || 'Label generation failed'); }
             const contentType = res.headers.get('content-type') || '';
-            let url: string | null = null;
             if (contentType.includes('application/pdf')) {
                 const blob = await res.blob();
-                url = URL.createObjectURL(blob);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'labels.pdf';
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
             } else {
                 const body = await res.json();
-                url = body.labelUrl || null;
-            }
-            if (url) {
-                if (popup && !popup.closed) {
-                    popup.location.href = url;
-                } else {
-                    window.location.href = url;
-                }
-                if (contentType.includes('application/pdf')) {
-                    setTimeout(() => URL.revokeObjectURL(url!), 60000);
+                if (body.labelUrl) {
+                    window.open(body.labelUrl, '_blank');
                 }
             }
         } catch (err: any) { setError(err.message); }
