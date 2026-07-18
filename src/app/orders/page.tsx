@@ -224,6 +224,7 @@ export default function OrdersPage() {
   const [productsReady, setProductsReady] = useState(false);
   const [citiesReady, setCitiesReady] = useState(false);
   const [companiesReady, setCompaniesReady] = useState(false);
+  const isMobile = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)[0];
   const { data: productsData } = useProductsEnabled(productsReady);
   const { data: citiesData } = useCitiesEnabled(citiesReady);
   const { data: companiesData } = useCompaniesEnabled(companiesReady);
@@ -260,7 +261,7 @@ export default function OrdersPage() {
     const deferTimer = setTimeout(() => {
       setProductsReady(true);
       setCitiesReady(true);
-      setCompaniesReady(true);
+      if (!isMobile) setCompaniesReady(true);
     }, 100);
 
     return () => {
@@ -272,6 +273,11 @@ export default function OrdersPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // On mobile: couriers load AFTER cities arrive (sequential fetch)
+  useEffect(() => {
+    if (isMobile && citiesData) setCompaniesReady(true);
+  }, [isMobile, citiesData]);
 
   // Auto-sum order items totals into main costPrice/saleAmount/profit/weight fields
   // and persist to DB so ledger/booking API reads correct values.
@@ -1188,6 +1194,52 @@ export default function OrdersPage() {
                     flex-wrap: wrap !important;
                     gap: 6px !important;
                 }
+                .orders-product-table-wrap { display: block; }
+                .orders-product-cards { display: none; }
+            }
+            .orders-product-table-wrap { display: block; }
+            .orders-product-cards { display: none; }
+            @media (max-width: 768px) {
+                .orders-product-table-wrap { display: none; }
+                .orders-product-cards { display: block; }
+            }
+            .orders-product-card {
+                border: 1px solid ${T.border};
+                border-radius: 10px;
+                padding: 10px 12px;
+                margin-bottom: 8px;
+                background: ${T.bg};
+            }
+            .orders-product-card-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 4px 0;
+                gap: 8px;
+            }
+            .orders-product-card-label {
+                font-size: 0.68rem;
+                font-weight: 600;
+                color: ${T.muted};
+                white-space: nowrap;
+            }
+            .orders-product-card-value {
+                font-size: 0.82rem;
+                color: ${T.fg};
+                text-align: right;
+            }
+            .orders-product-card-input {
+                width: 90px;
+                border: 1px solid ${T.border};
+                border-radius: 6px;
+                padding: 4px 6px;
+                font-size: 0.82rem;
+                text-align: right;
+                outline: none;
+                box-sizing: border-box;
+            }
+            .orders-product-card-input:focus {
+                border-color: ${T.accent};
             }
             .bns-dropdown {
                 scrollbar-width: thin;
@@ -2651,7 +2703,7 @@ export default function OrdersPage() {
                               return (
                                 <div>
                                   {items.length > 0 && (
-                                    <div style={{ marginBottom: 10, overflowX: "auto" }}>
+                                    <div className="orders-product-table-wrap" style={{ marginBottom: 10 }}>
                                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem", minWidth: 520 }}>
                                         <thead>
                                           <tr style={{ borderBottom: `1px solid ${T.border}` }}>
@@ -2668,10 +2720,10 @@ export default function OrdersPage() {
                                             const ip = item.costPrice && item.saleAmount ? Number(item.saleAmount) - Number(item.costPrice) : null;
                                             return (
                                               <tr key={item.id} style={{ borderBottom: `1px solid #f0f0f0` }}>
-                                                <td style={{ padding: "5px 8px", fontWeight: 500, color: T.fg }}>
+                                                <td data-label="Product" style={{ padding: "5px 8px", fontWeight: 500, color: T.fg }}>
                                                   {item.productName || products.find((p) => p.id === item.productId)?.name || "—"}
                                                 </td>
-                                                <td style={{ padding: "5px 8px", textAlign: "center" }}>
+                                                <td data-label="Qty" style={{ padding: "5px 8px", textAlign: "center" }}>
                                                   {item.productId ? (
                                                     <input type="number" min="1" value={item.quantity}
                                                       onChange={(e) => { const qty = parseInt(e.target.value) || 1; setOrderItemsMap((prev) => ({ ...prev, [order.id]: prev[order.id]?.map((oi, oii) => oii === ii ? { ...oi, quantity: qty } : oi) || [] })); }}
@@ -2681,7 +2733,7 @@ export default function OrdersPage() {
                                                     <span style={{ fontSize: "0.78rem", color: T.muted }}>—</span>
                                                   )}
                                                 </td>
-                                                <td style={{ padding: "5px 8px", textAlign: "right" }}>
+                                                <td data-label="Cost Price" style={{ padding: "5px 8px", textAlign: "right" }}>
                                                   {item.productId ? (
                                                     <span style={{ fontSize: "0.78rem", color: T.muted }}>Rs {Number(item.costPrice || 0).toFixed(0)}</span>
                                                   ) : (
@@ -2691,13 +2743,13 @@ export default function OrdersPage() {
                                                       style={{ width: 70, border: `1px solid ${T.border}`, borderRadius: 4, padding: "2px 4px", fontSize: "0.78rem", textAlign: "right" }} />
                                                   )}
                                                 </td>
-                                                <td style={{ padding: "5px 8px", textAlign: "right" }}>
+                                                <td data-label="Sale Amount" style={{ padding: "5px 8px", textAlign: "right" }}>
                                                   <input type="number" inputMode="decimal" value={item.saleAmount ?? ""}
                                                     onChange={(e) => { const sa = e.target.value; setOrderItemsMap((prev) => ({ ...prev, [order.id]: prev[order.id]?.map((oi, oii) => oii === ii ? { ...oi, saleAmount: sa || null } : oi) || [] })); }}
                                                     onBlur={() => { const its = orderItemsMap[order.id] || []; saveFieldsBatch(order.id, { orderItems: its }); }}
                                                     style={{ width: 70, border: `1px solid ${T.border}`, borderRadius: 4, padding: "2px 4px", fontSize: "0.78rem", textAlign: "right" }} />
                                                 </td>
-                                                <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 600, color: ip && ip > 0 ? "#16a34a" : T.muted }}>
+                                                <td data-label="Line Profit" style={{ padding: "5px 8px", textAlign: "right", fontWeight: 600, color: ip && ip > 0 ? "#16a34a" : T.muted }}>
                                                   {ip != null ? `Rs ${ip.toFixed(0)}` : "—"}
                                                 </td>
                                                 <td style={{ padding: "5px 8px", textAlign: "center" }}>
@@ -2709,6 +2761,62 @@ export default function OrdersPage() {
                                           })}
                                         </tbody>
                                       </table>
+                                    </div>
+                                  )}
+                                  {items.length > 0 && (
+                                    <div className="orders-product-cards">
+                                      {items.map((item, ii) => {
+                                        const ip = item.costPrice && item.saleAmount ? Number(item.saleAmount) - Number(item.costPrice) : null;
+                                        return (
+                                          <div key={item.id} className="orders-product-card">
+                                            <div className="orders-product-card-row">
+                                              <span className="orders-product-card-label">Product</span>
+                                              <span className="orders-product-card-value" style={{ fontWeight: 500 }}>
+                                                {item.productName || products.find((p) => p.id === item.productId)?.name || "—"}
+                                              </span>
+                                            </div>
+                                            <div className="orders-product-card-row">
+                                              <span className="orders-product-card-label">Qty</span>
+                                              {item.productId ? (
+                                                <input type="number" min="1" value={item.quantity}
+                                                  onChange={(e) => { const qty = parseInt(e.target.value) || 1; setOrderItemsMap((prev) => ({ ...prev, [order.id]: prev[order.id]?.map((oi, oii) => oii === ii ? { ...oi, quantity: qty } : oi) || [] })); }}
+                                                  onBlur={() => { const its = orderItemsMap[order.id] || []; saveFieldsBatch(order.id, { orderItems: its }); }}
+                                                  className="orders-product-card-input" style={{ width: 60, textAlign: "center" }} />
+                                              ) : (
+                                                <span className="orders-product-card-value">—</span>
+                                              )}
+                                            </div>
+                                            <div className="orders-product-card-row">
+                                              <span className="orders-product-card-label">Cost Price (Rs)</span>
+                                              {item.productId ? (
+                                                <span className="orders-product-card-value" style={{ color: T.muted }}>Rs {Number(item.costPrice || 0).toFixed(0)}</span>
+                                              ) : (
+                                                <input type="number" inputMode="decimal" value={item.costPrice ?? ""}
+                                                  onChange={(e) => { const cp = e.target.value; setOrderItemsMap((prev) => ({ ...prev, [order.id]: prev[order.id]?.map((oi, oii) => oii === ii ? { ...oi, costPrice: cp || null } : oi) || [] })); }}
+                                                  onBlur={() => { const its = orderItemsMap[order.id] || []; saveFieldsBatch(order.id, { orderItems: its }); }}
+                                                  className="orders-product-card-input" />
+                                              )}
+                                            </div>
+                                            <div className="orders-product-card-row">
+                                              <span className="orders-product-card-label">Sale Amount (Rs)</span>
+                                              <input type="number" inputMode="decimal" value={item.saleAmount ?? ""}
+                                                onChange={(e) => { const sa = e.target.value; setOrderItemsMap((prev) => ({ ...prev, [order.id]: prev[order.id]?.map((oi, oii) => oii === ii ? { ...oi, saleAmount: sa || null } : oi) || [] })); }}
+                                                onBlur={() => { const its = orderItemsMap[order.id] || []; saveFieldsBatch(order.id, { orderItems: its }); }}
+                                                className="orders-product-card-input" />
+                                            </div>
+                                            <div className="orders-product-card-row">
+                                              <span className="orders-product-card-label">Line Profit</span>
+                                              <span className="orders-product-card-value" style={{ fontWeight: 600, color: ip && ip > 0 ? "#16a34a" : T.muted }}>
+                                                {ip != null ? `Rs ${ip.toFixed(0)}` : "—"}
+                                              </span>
+                                            </div>
+                                            <div style={{ textAlign: "right", marginTop: 4 }}>
+                                              <button onClick={() => setOrderItemsMap((prev) => ({ ...prev, [order.id]: prev[order.id]?.filter((_, oii) => oii !== ii) || [] }))}
+                                                style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", padding: 4, fontSize: "0.75rem", fontWeight: 600 }}>Remove</button>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   )}
 
