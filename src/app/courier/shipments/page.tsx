@@ -31,6 +31,7 @@ export default function ShipmentsPage() {
     const [search, setSearch] = useState('');
     const [generatingLabel, setGeneratingLabel] = useState(false);
     const [error, setError] = useState('');
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
     useEffect(() => {
         const cache = (window as any).__BNS_CACHE__;
@@ -74,7 +75,7 @@ export default function ShipmentsPage() {
     async function handleGenerateLabel() {
         const cns = Array.from(selected).map((id) => orders.find((o) => o.id === id)?.trackingNumber).filter(Boolean) as string[];
         if (!cns.length) { setError('No tracking numbers to generate labels for.'); return; }
-        setGeneratingLabel(true); setError('');
+        setGeneratingLabel(true); setError(''); setPdfUrl(null);
         try {
             const res = await fetch('/api/courier/labels', {
                 method: 'POST',
@@ -86,12 +87,13 @@ export default function ShipmentsPage() {
             if (contentType.includes('application/pdf')) {
                 const blob = await res.blob();
                 const url = URL.createObjectURL(blob);
-                window.location.href = url;
-                setTimeout(() => URL.revokeObjectURL(url), 60000);
+                setPdfUrl(url);
             } else {
                 const body = await res.json();
                 if (body.labelUrl) {
-                    window.open(body.labelUrl, '_blank');
+                    const blob = await fetch(body.labelUrl).then(r => r.blob());
+                    const url = URL.createObjectURL(blob);
+                    setPdfUrl(url);
                 }
             }
         } catch (err: any) { setError(err.message); }
@@ -490,6 +492,50 @@ export default function ShipmentsPage() {
                         {generatingLabel ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
                         Print {selected.size} Label{selected.size > 1 ? 's' : ''}
                     </motion.button>
+                )}
+            </AnimatePresence>
+
+            {/* ── PDF Viewer Overlay (inline, for mobile print) ─── */}
+            <AnimatePresence>
+                {pdfUrl && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        style={{
+                            position: 'fixed', inset: 0, zIndex: 9999,
+                            background: '#fff', display: 'flex', flexDirection: 'column',
+                        }}
+                    >
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '10px 16px', borderBottom: `1px solid ${T.border}`,
+                            background: T.bg, zIndex: 10,
+                        }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: T.fg }}>Label Preview</span>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <button onClick={() => window.print()}
+                                    style={{
+                                        padding: '8px 16px', background: T.accent, color: '#fff',
+                                        border: 'none', borderRadius: 8, fontWeight: 600, fontSize: '0.82rem',
+                                        cursor: 'pointer',
+                                    }}
+                                >Print</button>
+                                <button onClick={() => { setPdfUrl(null); URL.revokeObjectURL(pdfUrl); }}
+                                    style={{
+                                        padding: '8px 12px', background: T.card, color: T.muted,
+                                        border: `1px solid ${T.border}`, borderRadius: 8, fontWeight: 500, fontSize: '0.82rem',
+                                        cursor: 'pointer',
+                                    }}
+                                >Close</button>
+                            </div>
+                        </div>
+                        <iframe
+                            src={pdfUrl}
+                            style={{ flex: 1, width: '100%', border: 'none' }}
+                            title="PDF Label"
+                        />
+                    </motion.div>
                 )}
             </AnimatePresence>
         </>
