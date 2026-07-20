@@ -45,6 +45,13 @@ async function getCredentials(userId: string): Promise<{ api_key: string }> {
     return creds;
 }
 
+/** Pre-fetch the decrypted API key once — use this in bulk-booking loops to
+ *  avoid a redundant DB round-trip per order inside bookShipment. */
+export async function getApiKey(userId: string): Promise<string> {
+    const creds = await getCredentials(userId);
+    return creds.api_key;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // REAL HTTP REQUEST WRAPPER
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,25 +216,26 @@ export async function fetchServiceTypes(userId: string) {
 // BOOK SINGLE SHIPMENT
 // POST /api/packet_booking
 // ─────────────────────────────────────────────────────────────────────────────
-export async function bookShipment(userId: string, orderData: {
+// BOOKING — internal implementation (accepts pre-fetched API key)
+// ─────────────────────────────────────────────────────────────────────────────
+type BookOrderData = {
     orderId: string;
     customerName: string;
     phoneNumber: string;
     address: string;
     city: string;
     weight: number;
-    shippingType: string;        // overnight | overland | detain
+    shippingType: string;
     codAmount: number;
     pieces: number;
-    courierCompany: string;      // company code e.g. "tcs"
-    courierOption?: string;      // service option code
-    pickupLocationId?: string;   // internal DB id
-    pickupExternalId?: string;   // flaship pickup address id
+    courierCompany: string;
+    courierOption?: string;
+    pickupLocationId?: string;
+    pickupExternalId?: string;
     productName?: string;
-}) {
-    const { api_key } = await getCredentials(userId);
+};
 
-    // pickuplocation is a REQUIRED param per Flaship docs — reject early if missing
+async function _bookWithKey(api_key: string, orderData: BookOrderData) {
     if (!orderData.pickupExternalId) {
         throw new Error(
             'Pickup location ID is required for booking. ' +
@@ -249,33 +257,40 @@ export async function bookShipment(userId: string, orderData: {
         pickuplocation: String(orderData.pickupExternalId || ''),
     };
 
-    console.log('[Flaship Booking Request] Payload:', JSON.stringify(payload, null, 2));
+    log.info('FLASHIP', 'Booking payload', { orderId: orderData.orderId, payload });
 
-    try {
-        const response = await apiRequest(api_key, '/api/packet_booking', 'POST', payload);
-        console.log('[Flaship Booking Response] Raw Output:', JSON.stringify(response, null, 2));
+    const response = await apiRequest(api_key, '/api/packet_booking', 'POST', payload);
+    log.info('FLASHIP', 'Booking raw response', { orderId: orderData.orderId, response });
 
-        const n = normalizeBooking(response);
+    const n = normalizeBooking(response);
 
-        // If trackingId / cn is missing from response, throw clear error
-        if (!n.trackingId && !n.cn) {
-            console.error('[Flaship Booking] Error: response lacks tracking ID or CN:', response);
-            throw new Error(response?.message || response?.error || response?.detail || 'Flaship API returned success but did not provide a tracking number/CN.');
-        }
-
-        return {
-            success: n.success,
-            orderNo: n.orderNo,
-            trackingId: n.trackingId,
-            cn: n.cn,
-            labelUrl: n.labelUrl,
-            courier_status: n.courier_status,
-            raw: response,
-        };
-    } catch (err: any) {
-        console.error('[Flaship Booking API Error]:', err.message);
-        throw err;
+    if (!n.trackingId && !n.cn) {
+        const msg = response?.message || response?.error || response?.detail || 'Flaship API returned no tracking number/CN.';
+        log.error('FLASHIP', 'Booking missing CN/trackingId', { response });
+        throw new Error(msg);
     }
+
+    return {
+        success: n.success,
+        orderNo: n.orderNo,
+        trackingId: n.trackingId,
+        cn: n.cn,
+        labelUrl: n.labelUrl,
+        courier_status: n.courier_status,
+        raw: response,
+    };
+}
+
+/** Standard booking — fetches credentials from DB automatically. */
+export async function bookShipment(userId: string, orderData: BookOrderData) {
+    const { api_key } = await getCredentials(userId);
+    return _bookWithKey(api_key, orderData);
+}
+
+/** Fast booking for bulk loops — accepts a pre-fetched API key so the
+ *  credential DB query is only done ONCE per request, not per order. */
+export async function bookShipmentWithKey(api_key: string, orderData: BookOrderData) {
+    return _bookWithKey(api_key, orderData);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { bookShipment, cancelShipment, fetchPickupLocations } from "@/lib/flaship";
+import { bookShipmentWithKey, getApiKey, cancelShipment, fetchPickupLocations } from "@/lib/flaship";
 import { validatePickupLocations } from "@/lib/flaship-adapter";
 import { validatePhone } from "@/lib/validation";
 import { apiError } from "@/lib/api-error";
@@ -54,136 +54,115 @@ export async function POST(request: Request) {
       );
     }
 
-    // Resolve pickup location external ID
-    let pickupExternalId: string | undefined;
-    if (pickupLocationId) {
-      // Explicit pickup selected by user from UI
-      const pickup = await prisma.pickupLocation.findFirst({
-        where: { id: pickupLocationId, userId: user.id },
-      });
-      pickupExternalId = pickup?.externalId || undefined;
-    } else {
-      // Prefer isDefault:true, fallback to first available (isDefault may be false for some accounts)
-      const defaultPickup = await prisma.pickupLocation.findFirst({
-        where: { userId: user.id, provider: 'flaship' },
-        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
-      });
-      pickupExternalId = defaultPickup?.externalId || undefined;
+    // ── Parallel pre-fetch: pickup location + orders + companies + cities + API key ──
+    // Running all 5 DB queries simultaneously saves ~3-4s of sequential round-trips.
+    const [
+      pickupRow,
+      orders,
+      companyRecords,
+      allCities,
+      apiKey,
+    ] = await Promise.all([
+      // 1. Pickup location (prefer default, fallback to first available)
+      pickupLocationId
+        ? prisma.pickupLocation.findFirst({ where: { id: pickupLocationId, userId: user.id } })
+        : prisma.pickupLocation.findFirst({
+            where: { userId: user.id, provider: 'flaship' },
+            orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+          }),
 
-      // Auto-heal: if no Flaship pickup in DB, silently re-sync before failing
-      if (!pickupExternalId) {
-        log.warn('ORDERS/BOOK', 'No Flaship pickup in DB — auto-heal re-sync', { userId: user.id });
-        try {
-          const data = await fetchPickupLocations(user.id);
-          const { valid } = validatePickupLocations(data.locations || []);
-          if (valid.length > 0) {
-            await prisma.$transaction(async (tx) => {
-              await tx.pickupLocation.deleteMany({ where: { userId: user.id, provider: 'flaship' } });
-              await tx.pickupLocation.createMany({
-                data: valid.map((l: any, i: number) => ({
-                  userId: user.id,
-                  provider: 'flaship',
-                  externalId: l.id,
-                  name: l.name,
-                  contactPerson: l.contact_person,
-                  phone: l.phone,
-                  address: l.address,
-                  city: l.city,
-                  area: l.area,
-                  isDefault: l.is_default ?? (i === 0),
-                  rawData: l,
-                })),
-              });
+      // 2. Selected draft orders
+      prisma.order.findMany({
+        where: { id: { in: order_ids }, userId: user.id, status: 'draft' },
+        include: { product: true, items: true },
+      }),
+
+      // 3. Courier companies
+      prisma.courierCompany.findMany({ where: { userId: user.id, provider: 'flaship' } }),
+
+      // 4. ALL operational cities for this user (in-memory lookup replaces per-order DB query)
+      prisma.operationalCity.findMany({
+        where: { userId: user.id },
+        select: { name: true },
+      }),
+
+      // 5. Decrypted API key — fetched once, reused for every order
+      getApiKey(user.id),
+    ]);
+
+    // Build a lower-cased city set for O(1) lookups
+    const validCitySet = new Set(allCities.map((c: { name: string }) => c.name.toLowerCase().trim()));
+
+    // Auto-heal pickup location if still missing after parallel fetch
+    let resolvedPickup = pickupRow;
+    let pickupExternalId: string | undefined = resolvedPickup?.externalId || undefined;
+
+    if (!pickupExternalId) {
+      log.warn('ORDERS/BOOK', 'No Flaship pickup in DB — auto-heal re-sync', { userId: user.id });
+      try {
+        const data = await fetchPickupLocations(user.id);
+        const { valid } = validatePickupLocations(data.locations || []);
+        if (valid.length > 0) {
+          await prisma.$transaction(async (tx) => {
+            await tx.pickupLocation.deleteMany({ where: { userId: user.id, provider: 'flaship' } });
+            await tx.pickupLocation.createMany({
+              data: valid.map((l: any, i: number) => ({
+                userId: user.id, provider: 'flaship', externalId: l.id,
+                name: l.name, contactPerson: l.contact_person, phone: l.phone,
+                address: l.address, city: l.city, area: l.area,
+                isDefault: l.is_default ?? (i === 0), rawData: l,
+              })),
             });
-            const healed = await prisma.pickupLocation.findFirst({
-              where: { userId: user.id, provider: 'flaship' },
-              orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
-            });
-            pickupExternalId = healed?.externalId || undefined;
-            log.info('ORDERS/BOOK', `Auto-heal synced ${valid.length} pickup locations`, { userId: user.id });
-          }
-        } catch (healErr: any) {
-          log.error('ORDERS/BOOK', 'Auto-heal re-sync failed', { error: healErr.message });
+          });
+          resolvedPickup = await prisma.pickupLocation.findFirst({
+            where: { userId: user.id, provider: 'flaship' },
+            orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+          });
+          pickupExternalId = resolvedPickup?.externalId || undefined;
+          log.info('ORDERS/BOOK', `Auto-heal synced ${valid.length} pickup locations`, { userId: user.id });
         }
+      } catch (healErr: any) {
+        log.error('ORDERS/BOOK', 'Auto-heal re-sync failed', { error: healErr.message });
       }
     }
 
-    // Fetch the selected orders
-    const orders = await prisma.order.findMany({
-      where: {
-        id: { in: order_ids },
-        userId: user.id,
-        status: "draft",
-      },
-      include: { product: true, items: true },
-    });
-
     if (orders.length === 0) {
-      return NextResponse.json(
-        { error: "No valid draft orders found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: 'No valid draft orders found' }, { status: 404 });
     }
-
-    // Pre-fetch all courier companies for this user to match codes/names
-    const companyRecords = await prisma.courierCompany.findMany({
-      where: { userId: user.id, provider: "flaship" },
-    });
 
     const results = [];
 
     for (const order of orders) {
       try {
-        // Find selected courier for this specific order
-        const selectedCode =
-          (orderCouriers && orderCouriers[order.id]) || courierCompany;
-        if (!selectedCode) {
-          throw new Error("Please select a courier company for this order.");
+        const selectedCode = (orderCouriers && orderCouriers[order.id]) || courierCompany;
+        if (!selectedCode) throw new Error('Please select a courier company for this order.');
+
+        // Field validation
+        if (!order.customerName?.trim()) throw new Error('Consignee Name is required.');
+        if (!order.phoneNumber?.trim()) throw new Error('Consignee Phone number is required.');
+        if (!order.address?.trim()) throw new Error('Consignee Address is required.');
+        if (!order.city?.trim()) throw new Error('Destination City is required.');
+        if (!order.weight || parseFloat(String(order.weight)) <= 0) throw new Error('Valid weight is required.');
+        if (!order.sellingPrice || parseFloat(String(order.sellingPrice)) < 0) throw new Error('Valid COD amount is required.');
+
+        // In-memory city check (O(1), no DB query per order)
+        if (!validCitySet.has(order.city.toLowerCase().trim())) {
+          throw new Error(`The city "${order.city}" is not an operational Flaship city for your connected merchant account.`);
         }
 
-        // Strict Backend Field Validation
-        if (!order.customerName?.trim())
-          throw new Error("Consignee Name is required.");
-        if (!order.phoneNumber?.trim())
-          throw new Error("Consignee Phone number is required.");
-        if (!order.address?.trim())
-          throw new Error("Consignee Address is required.");
-        if (!order.city?.trim())
-          throw new Error("Destination City is required.");
-        if (!order.weight || parseFloat(String(order.weight)) <= 0)
-          throw new Error("Valid weight is required.");
-        if (!order.sellingPrice || parseFloat(String(order.sellingPrice)) < 0)
-          throw new Error("Valid COD amount is required.");
-
-        // Verify the city exists in operational cities for this specific user to avoid booking invalid cities
-        const destCity = await prisma.operationalCity.findFirst({
-          where: {
-            userId: user.id,
-            name: { equals: order.city.trim(), mode: "insensitive" },
-          },
-        });
-        if (!destCity) {
-          throw new Error(
-            `The city "${order.city}" is not an operational Flaship city for your connected merchant account.`,
-          );
-        }
-
-        // Verify pickup location external ID exists if expected
         if (!pickupExternalId) {
-          throw new Error(
-            "No valid pickup location selected or set as default.",
-          );
+          throw new Error('No valid pickup location selected or set as default.');
         }
 
         const companyRecord = companyRecords.find(
-          (c) =>
+          (c: { code: string | null; name: string }) =>
             c.code?.toLowerCase() === selectedCode.toLowerCase() ||
             c.name?.toLowerCase() === selectedCode.toLowerCase(),
         );
         const realCompanyName = companyRecord?.name || selectedCode;
 
-        // Call real Flaship booking API
-        const result = await bookShipment(user.id, {
+        // Book using pre-fetched API key — no extra DB call per order
+        const result = await bookShipmentWithKey(apiKey, {
           orderId: order.id,
           customerName: order.customerName || "",
           phoneNumber: validatePhone(order.phoneNumber),
