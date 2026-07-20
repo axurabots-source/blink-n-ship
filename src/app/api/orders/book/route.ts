@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { bookShipment, cancelShipment } from "@/lib/flaship";
+import { bookShipment, cancelShipment, fetchPickupLocations } from "@/lib/flaship";
+import { validatePickupLocations } from "@/lib/flaship-adapter";
 import { validatePhone } from "@/lib/validation";
 import { apiError } from "@/lib/api-error";
 import { rateLimit, Limit } from "@/lib/rate-limit";
@@ -53,19 +54,58 @@ export async function POST(request: Request) {
       );
     }
 
-    // Resolve pickup location external ID if provided
+    // Resolve pickup location external ID
     let pickupExternalId: string | undefined;
     if (pickupLocationId) {
+      // Explicit pickup selected by user from UI
       const pickup = await prisma.pickupLocation.findFirst({
         where: { id: pickupLocationId, userId: user.id },
       });
       pickupExternalId = pickup?.externalId || undefined;
     } else {
-      // Use default pickup location
+      // Prefer isDefault:true, fallback to first available (isDefault may be false for some accounts)
       const defaultPickup = await prisma.pickupLocation.findFirst({
-        where: { userId: user.id, isDefault: true },
+        where: { userId: user.id, provider: 'flaship' },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
       });
       pickupExternalId = defaultPickup?.externalId || undefined;
+
+      // Auto-heal: if no Flaship pickup in DB, silently re-sync before failing
+      if (!pickupExternalId) {
+        log.warn('ORDERS/BOOK', 'No Flaship pickup in DB — auto-heal re-sync', { userId: user.id });
+        try {
+          const data = await fetchPickupLocations(user.id);
+          const { valid } = validatePickupLocations(data.locations || []);
+          if (valid.length > 0) {
+            await prisma.$transaction(async (tx) => {
+              await tx.pickupLocation.deleteMany({ where: { userId: user.id, provider: 'flaship' } });
+              await tx.pickupLocation.createMany({
+                data: valid.map((l: any, i: number) => ({
+                  userId: user.id,
+                  provider: 'flaship',
+                  externalId: l.id,
+                  name: l.name,
+                  contactPerson: l.contact_person,
+                  phone: l.phone,
+                  address: l.address,
+                  city: l.city,
+                  area: l.area,
+                  isDefault: l.is_default ?? (i === 0),
+                  rawData: l,
+                })),
+              });
+            });
+            const healed = await prisma.pickupLocation.findFirst({
+              where: { userId: user.id, provider: 'flaship' },
+              orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+            });
+            pickupExternalId = healed?.externalId || undefined;
+            log.info('ORDERS/BOOK', `Auto-heal synced ${valid.length} pickup locations`, { userId: user.id });
+          }
+        } catch (healErr: any) {
+          log.error('ORDERS/BOOK', 'Auto-heal re-sync failed', { error: healErr.message });
+        }
+      }
     }
 
     // Fetch the selected orders
