@@ -249,17 +249,33 @@ export async function bookShipment(userId: string, orderData: {
         pickuplocation: String(orderData.pickupExternalId || ''),
     };
 
-    const response = await apiRequest(api_key, '/api/packet_booking', 'POST', payload);
-    const n = normalizeBooking(response);
-    return {
-        success: n.success,
-        orderNo: n.orderNo,
-        trackingId: n.trackingId,
-        cn: n.cn,
-        labelUrl: n.labelUrl,
-        courier_status: n.courier_status,
-        raw: response,
-    };
+    console.log('[Flaship Booking Request] Payload:', JSON.stringify(payload, null, 2));
+
+    try {
+        const response = await apiRequest(api_key, '/api/packet_booking', 'POST', payload);
+        console.log('[Flaship Booking Response] Raw Output:', JSON.stringify(response, null, 2));
+
+        const n = normalizeBooking(response);
+
+        // If trackingId / cn is missing from response, throw clear error
+        if (!n.trackingId && !n.cn) {
+            console.error('[Flaship Booking] Error: response lacks tracking ID or CN:', response);
+            throw new Error(response?.message || response?.error || response?.detail || 'Flaship API returned success but did not provide a tracking number/CN.');
+        }
+
+        return {
+            success: n.success,
+            orderNo: n.orderNo,
+            trackingId: n.trackingId,
+            cn: n.cn,
+            labelUrl: n.labelUrl,
+            courier_status: n.courier_status,
+            raw: response,
+        };
+    } catch (err: any) {
+        console.error('[Flaship Booking API Error]:', err.message);
+        throw err;
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
