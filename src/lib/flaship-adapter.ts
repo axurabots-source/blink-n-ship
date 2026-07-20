@@ -399,6 +399,7 @@ export function normalizePickupLocationsList(raw: any): NormalizedPickupLocation
     const data = raw || {};
     const list: any[] = data.pickup_locations || data.pickupAddresses || data.pickupAddress || [];
     return list.map((p, i) => {
+        // Flaship returns {id, address, is_default} — address IS the display name for most accounts
         const address = toStr(pick(p, ['address', 'pickup_address']));
         const name =
             toStr(pick(p, ['name', 'shipperName', 'shipper_name', 'contact_person'])) ||
@@ -557,8 +558,13 @@ export function validatePickupLocations(records: NormalizedPickupLocation[]): Va
     const valid: NormalizedPickupLocation[] = [];
     const skipped: { record: unknown; reason: string }[] = [];
     for (const l of records) {
-        if (!l.name) { skipped.push({ record: l, reason: 'Missing pickup location name' }); continue; }
-        if (!l.address) { skipped.push({ record: l, reason: 'Missing pickup location address' }); continue; }
+        // Only the external id is truly required — it is what Flaship's packet_booking
+        // API needs in the `pickuplocation` field. Name and address are display-only.
+        // Flaship often returns {id, address, is_default} with no separate name field.
+        if (!l.id || l.id.startsWith('pickup-')) {
+            skipped.push({ record: l, reason: 'Missing pickup location id from Flaship' });
+            continue;
+        }
         valid.push(l);
     }
     return { valid, skipped };
