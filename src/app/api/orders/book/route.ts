@@ -93,6 +93,14 @@ export async function POST(request: Request) {
     // Build a lower-cased city set for O(1) lookups
     const validCitySet = new Set(allCities.map((c: { name: string }) => c.name.toLowerCase().trim()));
 
+    // Verify API key connection exists before executing loops
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "No active Flaship connection. Please go to Courier Settings and connect your account first." },
+        { status: 400 }
+      );
+    }
+
     // Auto-heal pickup location if still missing after parallel fetch
     let resolvedPickup = pickupRow;
     let pickupExternalId: string | undefined = resolvedPickup?.externalId || undefined;

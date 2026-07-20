@@ -47,9 +47,13 @@ async function getCredentials(userId: string): Promise<{ api_key: string }> {
 
 /** Pre-fetch the decrypted API key once — use this in bulk-booking loops to
  *  avoid a redundant DB round-trip per order inside bookShipment. */
-export async function getApiKey(userId: string): Promise<string> {
-    const creds = await getCredentials(userId);
-    return creds.api_key;
+export async function getApiKey(userId: string): Promise<string | null> {
+    try {
+        const creds = await getCredentials(userId);
+        return creds.api_key;
+    } catch {
+        return null;
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
