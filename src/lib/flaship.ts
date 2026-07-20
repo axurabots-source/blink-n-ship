@@ -264,6 +264,14 @@ async function _bookWithKey(api_key: string, orderData: BookOrderData) {
 
     const n = normalizeBooking(response);
 
+    // Bug #2 fix: Flaship often returns HTTP 200 with { success: false, message: "..." }
+    // Treat any explicit success:false as a booking failure regardless of HTTP status.
+    if (n.success === false) {
+        const msg = response?.message || response?.error || response?.detail || 'Flaship booking failed.';
+        log.error('FLASHIP', 'Booking rejected by Flaship (success:false)', { response });
+        throw new Error(msg);
+    }
+
     if (!n.trackingId && !n.cn) {
         const msg = response?.message || response?.error || response?.detail || 'Flaship API returned no tracking number/CN.';
         log.error('FLASHIP', 'Booking missing CN/trackingId', { response });
