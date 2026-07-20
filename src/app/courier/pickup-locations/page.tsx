@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Plus, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { MapPin, Plus, Trash2, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useToast } from "@/components/Toast";
 
 const T = {
@@ -21,6 +21,7 @@ export default function PickupLocations() {
     const [locations, setLocations] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const [syncing, setSyncing] = useState(false);
 
     // Form state
     const [name, setName] = useState('');
@@ -41,6 +42,24 @@ export default function PickupLocations() {
                 setLoading(false);
             })
             .catch(() => { setLoading(false); toast('error', 'Failed to load data'); });
+    };
+
+    const handleSync = async () => {
+        setSyncing(true);
+        try {
+            const res = await fetch('/api/courier/pickup-locations/sync', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                toast('success', `Synced ${data.count} pickup locations from Flaship`);
+                loadLocations();
+            } else {
+                toast('error', data.error || 'Sync failed');
+            }
+        } catch {
+            toast('error', 'Sync request failed');
+        } finally {
+            setSyncing(false);
+        }
     };
 
     useEffect(() => {
@@ -110,13 +129,23 @@ export default function PickupLocations() {
                     <h1 style={{ fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.03em', marginBottom: '6px' }}>Pickup Locations</h1>
                     <p style={{ color: T.muted, fontSize: '0.875rem' }} className="bns-subtext">Manage warehouse and office dispatch centers for parcel handovers.</p>
                 </div>
-                <button
-                    onClick={() => setShowForm(!showForm)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: T.accent, color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}
-                >
-                    <Plus size={16} />
-                    <span>Add Location</span>
-                </button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                        onClick={handleSync}
+                        disabled={syncing}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fff', color: T.fg, border: `1px solid ${T.border}`, padding: '10px 20px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer', opacity: syncing ? 0.6 : 1 }}
+                    >
+                        <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+                        <span>{syncing ? 'Syncing...' : 'Sync from Flaship'}</span>
+                    </button>
+                    <button
+                        onClick={() => setShowForm(!showForm)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: T.accent, color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                        <Plus size={16} />
+                        <span>Add Location</span>
+                    </button>
+                </div>
             </div>
 
             {showForm && (
