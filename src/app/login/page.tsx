@@ -404,6 +404,10 @@ export default function LoginPage() {
                 password,
                 options: {
                     emailRedirectTo: `${window.location.origin}/auth/callback`,
+                    data: {
+                        business_name: businessName.trim(),
+                        phone: phone.trim(),
+                    }
                 },
             });
             if (authError) { setError(authError.message); setLoading(false); return; }
