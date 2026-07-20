@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { bookShipmentWithKey, getApiKey, cancelShipment, fetchPickupLocations } from "@/lib/flaship";
 import { validatePickupLocations } from "@/lib/flaship-adapter";
-import { validatePhone } from "@/lib/validation";
+import { validatePhone, normalizeCityName } from "@/lib/validation";
 import { apiError } from "@/lib/api-error";
 import { rateLimit, Limit } from "@/lib/rate-limit";
 import { checkIdempotency, makeIdempotencyKey } from "@/lib/idempotency";
@@ -137,29 +137,32 @@ export async function POST(request: Request) {
         const selectedCode = (orderCouriers && orderCouriers[order.id]) || courierCompany;
         if (!selectedCode) throw new Error('Please select a courier company for this order.');
 
-        // Field validation
-        if (!order.customerName?.trim()) throw new Error('Consignee Name is required.');
-        if (!order.phoneNumber?.trim()) throw new Error('Consignee Phone number is required.');
-        if (!order.address?.trim()) throw new Error('Consignee Address is required.');
-        if (!order.city?.trim()) throw new Error('Destination City is required.');
-        if (!order.weight || parseFloat(String(order.weight)) <= 0) throw new Error('Valid weight is required.');
-        if (!order.sellingPrice || parseFloat(String(order.sellingPrice)) < 0) throw new Error('Valid COD amount is required.');
-
-        // In-memory city check (O(1), no DB query per order)
-        if (!validCitySet.has(order.city.toLowerCase().trim())) {
-          throw new Error(`The city "${order.city}" is not an operational Flaship city for your connected merchant account.`);
-        }
-
-        if (!pickupExternalId) {
-          throw new Error('No valid pickup location selected or set as default.');
-        }
-
+        // Normalize city name based on target courier option (e.g., leopards)
+        const rawCityName = order.city || '';
         const companyRecord = companyRecords.find(
           (c: { code: string | null; name: string }) =>
             c.code?.toLowerCase() === selectedCode.toLowerCase() ||
             c.name?.toLowerCase() === selectedCode.toLowerCase(),
         );
         const realCompanyName = companyRecord?.name || selectedCode;
+        const targetCity = normalizeCityName(rawCityName, realCompanyName);
+
+        // Field validation
+        if (!order.customerName?.trim()) throw new Error('Consignee Name is required.');
+        if (!order.phoneNumber?.trim()) throw new Error('Consignee Phone number is required.');
+        if (!order.address?.trim()) throw new Error('Consignee Address is required.');
+        if (!targetCity.trim()) throw new Error('Destination City is required.');
+        if (!order.weight || parseFloat(String(order.weight)) <= 0) throw new Error('Valid weight is required.');
+        if (!order.sellingPrice || parseFloat(String(order.sellingPrice)) < 0) throw new Error('Valid COD amount is required.');
+
+        // In-memory city check (O(1), no DB query per order)
+        if (!validCitySet.has(targetCity.toLowerCase().trim())) {
+          throw new Error(`The city "${targetCity}" (original: "${rawCityName}") is not an operational Flaship city for your connected merchant account.`);
+        }
+
+        if (!pickupExternalId) {
+          throw new Error('No valid pickup location selected or set as default.');
+        }
 
         // Book using pre-fetched API key — no extra DB call per order
         const result = await bookShipmentWithKey(apiKey, {
@@ -167,7 +170,7 @@ export async function POST(request: Request) {
           customerName: order.customerName || "",
           phoneNumber: validatePhone(order.phoneNumber),
           address: order.address || "",
-          city: order.city || "",
+          city: targetCity,
           weight: Number(order.weight || order.product?.weight || 0.5),
           shippingType: order.shippingType || courierOption || "overnight",
           codAmount: Number(order.sellingPrice || 0),

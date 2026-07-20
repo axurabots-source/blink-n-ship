@@ -36,3 +36,47 @@ export function safePagination(page: unknown, limit: unknown, maxLimit = 100): {
   const l = Math.min(maxLimit, Math.max(1, Math.floor(Number(limit) || 20)));
   return { page: p, limit: l, skip: (p - 1) * l };
 }
+
+/**
+ * Standardize common Pakistani logistics city name spelling/space variations
+ * to match exact names configured by courier providers in Flaship.
+ */
+export function normalizeCityName(cityName: string, courierCompany = ''): string {
+  if (!cityName) return '';
+  const city = cityName.trim().toLowerCase();
+  const courier = courierCompany.toLowerCase();
+
+  // Alias lookup map
+  const aliases: Record<string, string> = {
+    'sultan kot': 'kot sultan',
+    'sultankot': 'kot sultan',
+    'khair pur': 'khairpur',
+    'dera ghazi khan': 'd.g.khan',
+    'dg khan': 'd.g.khan',
+    'dera ismail khan': 'd.i.khan',
+    'di khan': 'd.i.khan',
+    'tando allahyar': 'tando allah yar',
+    'tando adam': 'tando adam khan',
+    'peshawar central': 'peshawar',
+    'rawalpindi cantt': 'rawalpindi',
+    'karachi central': 'karachi',
+  };
+
+  // Specific courier-destination mappings (e.g. Leopard demands Kot Sultan Bhai)
+  if (city === 'kot sultan' && (courier.includes('leopard') || courier.includes('lcs'))) {
+    return 'Kot Sultan Bhai';
+  }
+
+  // Check alias map
+  if (aliases[city]) {
+    return aliases[city].toUpperCase();
+  }
+
+  // Capitalize words as default format
+  return cityName
+    .trim()
+    .split(/\s+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
