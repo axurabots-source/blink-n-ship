@@ -20,13 +20,19 @@ export async function POST(request: Request) {
                 where: { id: orderId, userId: user.id },
                 include: { product: true },
             }),
+            // Order by isDefault DESC so the default comes first.
+            // If no isDefault:true exists (common on reconnect), fallback to first available location.
             prisma.pickupLocation.findFirst({
-                where: { userId: user.id, isDefault: true },
+                where: { userId: user.id, provider: 'flaship' },
+                orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
             }),
         ]);
 
         if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
         if (order.status === 'booked') return NextResponse.json({ error: 'Order is already booked' }, { status: 400 });
+        if (!pickupLocation) return NextResponse.json({
+            error: 'No pickup location found. Please go to Courier Settings and sync your pickup locations.',
+        }, { status: 400 });
 
         // Call real Flaship API
         const result = await bookShipment(user.id, {
